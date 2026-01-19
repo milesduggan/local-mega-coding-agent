@@ -1,0 +1,68 @@
+{
+  "name": "local-ai-agent",
+  "displayName": "Local AI Coding Agent",
+  "description": "A local, offline coding agent with critic-executor-review workflow",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ai-agent.openChat",
+        "title": "AI Agent: Open Chat"
+      },
+      {
+        "command": "ai-agent.addFile",
+        "title": "AI Agent: Add File"
+      },
+      {
+        "command": "ai-agent.removeFile",
+        "title": "AI Agent: Remove File"
+      },
+      {
+        "command": "ai-agent.clearFiles",
+        "title": "AI Agent: Clear All Files"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "ai-agent.addFile",
+          "group": "2_workspace",
+          "when": "!explorerResourceIsFolder"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Local AI Agent",
+      "properties": {
+        "ai-agent.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to Python executable"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.0"
+  }
+}

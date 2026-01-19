@@ -1,0 +1,16 @@
+DECISION STATE SNAPSHOT
+
+AGENT ROLE
+Coding agent.
+
+OPERATING MODE
+Conservative.
+
+DECISION AUTHORITY
+Snapshot is authoritative.
+
+IMPLEMENTATION CONSTRAINTS
+Diff-only execution.
+
+EXPLICIT NON-GOALS
+No side effects.
