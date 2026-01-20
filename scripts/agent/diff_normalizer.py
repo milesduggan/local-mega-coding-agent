@@ -13,4 +13,8 @@ def normalize_diff(text: str) -> str:
                 if line.startswith(("@@ ", "+", "-", " ")):
                     diff_lines.append(line)
                 else:
-                    br
+                    break
+
+            break
+
+    return "\n".join(diff_lines).strip()

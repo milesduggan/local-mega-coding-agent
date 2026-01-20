@@ -78,8 +78,9 @@ def handle_review(params: dict) -> str:
 
 
 def handle_normalize_task(params: dict) -> str:
-    """Generate a condensed task specification from conversation history."""
+    """Generate a normalized execution brief from conversation history."""
     history = params.get("history", [])
+    selected_files = params.get("files", [])
 
     if not history:
         raise ValueError("No conversation history to normalize")
@@ -90,7 +91,11 @@ def handle_normalize_task(params: dict) -> str:
         if isinstance(msg, dict) and "role" in msg and "content" in msg:
             formatted_history.append({"role": msg["role"], "content": msg["content"]})
 
-    return normalize_task(formatted_history)
+    # Convert files dict keys to list if dict provided
+    if isinstance(selected_files, dict):
+        selected_files = list(selected_files.keys())
+
+    return normalize_task(formatted_history, selected_files)
 
 
 def handle_message(msg: dict) -> None:

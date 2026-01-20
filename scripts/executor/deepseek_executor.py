@@ -1,43 +1,56 @@
-import difflib
-from typing import Dict, Callable
-
-
-EXECUTOR_SYSTEM_INSTRUCTION = """
-You are a code transformation engine.
-
-Given:
-- an execution brief
-- file contents
-
-Produce:
-- a unified diff implementing the requested changes
-
-Rules:
-- Do not explain
-- Do not add unrelated changes
-- Do not modify files not listed
-- Output unified diff ONLY
-""".strip()
+"""
+DeepSeek executor - outputs full updated file contents.
+System synthesizes diffs locally. DeepSeek never emits diffs.
+"""
 
 
 class DeepSeekExecutor:
-    def __init__(self, model_call: Callable[[str], str]):
-        self.model_call = model_call
+    def __init__(self, call_model):
+        self.call_model = call_model
 
-    def execute(self, execution_brief: str, files: Dict[str, str]) -> str:
-        prompt = self._build_prompt(execution_brief, files)
-        response = self.model_call(prompt)
-        return self._extract_diff(response)
+    def _build_prompt(self, brief: str, files: dict) -> str:
+        """
+        Build prompt requesting full updated file contents.
+        DeepSeek must NOT emit diffs, markdown, or commentary.
+        """
+        files_section = ""
+        for filename, content in files.items():
+            files_section += f"FILE: {filename}\n{content}\n\n"
 
-    def _build_prompt(self, brief: str, files: Dict[str, str]) -> str:
-        parts = [EXECUTOR_SYSTEM_INSTRUCTION, "", brief, "", "FILES"]
+        return f"""You are a code transformation engine.
 
-        for name, content in files.items():
-            parts.append(f"--- {name}")
-            parts.append(content)
+TASK:
+Apply the following EXECUTION BRIEF to the provided files.
 
-        return "\n".join(parts)
+STRICT OUTPUT RULES (MANDATORY):
+- Output ONLY the full updated contents of each modified file.
+- Use this EXACT format for each file:
 
-    def _extract_diff(self, text: str) -> str:
-        # Trust model to output diff only (enforced by review layer)
-        return text.strip()
+FILE: <relative/path/filename>
+<full updated file contents>
+
+- One FILE block per modified file.
+- Do NOT include markdown.
+- Do NOT include code blocks.
+- Do NOT include explanations.
+- Do NOT include commentary.
+- Do NOT include diffs.
+- Output ONLY the FILE blocks with updated contents.
+
+If a file is not modified, do NOT include it in output.
+
+EXECUTION BRIEF:
+{brief}
+
+FILES:
+{files_section}"""
+
+    def execute(self, brief: str, files: dict) -> str:
+        """
+        Execute the brief and return raw DeepSeek output.
+        Output contains full file contents in FILE: format.
+        Caller is responsible for parsing and diff synthesis.
+        """
+        prompt = self._build_prompt(brief, files)
+        result = self.call_model(prompt)
+        return result.strip()

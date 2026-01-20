@@ -2,7 +2,7 @@
   "name": "local-ai-agent",
   "displayName": "Local AI Coding Agent",
   "description": "A local, offline coding agent with critic-executor-review workflow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "local",
   "engines": {
     "vscode": "^1.85.0"
@@ -13,10 +13,28 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ai-agent-sidebar",
+          "title": "AI Agent",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "ai-agent-sidebar": [
+        {
+          "type": "webview",
+          "id": "ai-agent.sidebarView",
+          "name": "Agent"
+        }
+      ]
+    },
     "commands": [
       {
-        "command": "ai-agent.openChat",
-        "title": "AI Agent: Open Chat"
+        "command": "ai-agent.openSidebar",
+        "title": "AI Agent: Open Sidebar"
       },
       {
         "command": "ai-agent.addFile",

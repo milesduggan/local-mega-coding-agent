@@ -13,6 +13,8 @@ from memory.context_manager import ContextManager
 MODEL_PATH = os.path.join(_PROJECT_ROOT, "models", "llama", "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf")
 STORAGE_DIR = os.path.join(_PROJECT_ROOT, ".ai-agent-memory")
 
+HANDOFF_PHRASE = "Proceed with implementation."
+
 # Type aliases for conversation history
 Message = Dict[str, str]
 History = List[Message]
@@ -129,23 +131,58 @@ def add_project_learning(learning: str) -> None:
     ctx_manager.update_project_context(learning)
 
 
-def normalize_task(conversation_history: History) -> str:
+def normalize_task(conversation_history: History, selected_files: Optional[List[str]] = None) -> str:
     """
-    Generate a condensed task summary from conversation.
+    Generate a normalized execution brief from conversation.
     Called when user clicks 'Proceed' to create a clean task spec for the executor.
-    This keeps the executor's context free for actual file contents.
+
+    Output format (strict):
+    TASK:
+    <single sentence describing the requested change>
+
+    FILES:
+    - <relative/path/file1>
+    - <relative/path/file2>
+
+    CONSTRAINTS:
+    - <optional constraints, only if explicitly stated by user>
+
+    If the conversation cannot be normalized, returns a clarification question.
     """
-    system_prompt = (
-        "Summarize this conversation into a clear, actionable task specification.\n"
-        "Output format:\n"
-        "TASK: [One clear sentence describing what to do]\n"
-        "CHANGES: [Bullet list of specific changes to make]\n\n"
-        "Rules:\n"
-        "- Keep it under 150 words total.\n"
-        "- Be specific and actionable.\n"
-        "- Include any important constraints or requirements mentioned.\n"
-        "- Do NOT include code, only describe what needs to change."
-    )
+    # Build file list for context
+    files_context = ""
+    if selected_files:
+        files_context = "\n\nSELECTED FILES:\n" + "\n".join(f"- {f}" for f in selected_files)
+
+    system_prompt = """You are a task normalization engine.
+
+Your job is to convert a conversation into a normalized execution brief.
+
+OUTPUT FORMAT (STRICT - follow exactly):
+
+TASK:
+<single sentence describing the requested change>
+
+FILES:
+- <relative/path/file1>
+- <relative/path/file2>
+
+CONSTRAINTS:
+- <constraint if explicitly stated by user>
+
+RULES:
+- Output ONLY the normalized brief in the exact format above
+- Exactly one TASK section with a single sentence
+- Exactly one FILES section listing files to modify
+- CONSTRAINTS section may be empty (just "CONSTRAINTS:" with nothing after)
+- Do NOT include markdown
+- Do NOT include code
+- Do NOT include examples
+- Do NOT include headers like "EXECUTION BRIEF"
+- Do NOT include commentary or explanations
+- Do NOT repeat yourself
+
+If you cannot determine the task clearly, output ONLY a clarification question starting with "CLARIFY:"."""
 
     # Build conversation summary from recent messages
     convo_text = "\n".join(
@@ -155,14 +192,14 @@ def normalize_task(conversation_history: History) -> str:
 
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Conversation:\n{convo_text}"}
+        {"role": "user", "content": f"Conversation:\n{convo_text}{files_context}"}
     ]
 
     llm = _get_llm()
     response = llm.create_chat_completion(
         messages=messages,
-        max_tokens=256,
-        temperature=0.3,
+        max_tokens=300,
+        temperature=0.2,
     )
 
     text = response["choices"][0]["message"]["content"].strip()
