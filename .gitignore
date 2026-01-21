@@ -6,6 +6,9 @@ __pycache__/
 *.pyc
 *.pyo
 .ai-agent-memory/
+.venv/
+venv/
+env/
 
 # Node
 node_modules/
@@ -14,6 +17,9 @@ node_modules/
 # IDE
 .vscode/
 *.code-workspace
+.idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
@@ -21,6 +27,14 @@ Thumbs.db
 
 # Build artifacts
 vscode-ai-agent/out/
+build/
+dist/
+*.egg-info/
+
+# Test/coverage
+.coverage
+htmlcov/
+.pytest_cache/
 
 # Claude Code local config
 .claude/

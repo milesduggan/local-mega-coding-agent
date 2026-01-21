@@ -11,7 +11,7 @@ export class PythonBackend {
   private proc: ChildProcess;
   private buffer = "";
   private requestId = 0;
-  private callbacks = new Map<number, (result: any, error?: string) => void>();
+  private callbacks = new Map<number, (result: unknown, error?: string) => void>();
   private ready = false;
   private readyPromise: Promise<void>;
   private lastError: string = "";
@@ -102,7 +102,7 @@ export class PythonBackend {
     return config.get<number>(`timeouts.${operation}`) ?? defaultTimeouts[operation];
   }
 
-  private async call(method: string, params: any, timeoutMs: number = 180000): Promise<any> {
+  private async call<T>(method: string, params: Record<string, unknown>, timeoutMs: number = 180000): Promise<T> {
     await this.readyPromise;
 
     return new Promise((resolve, reject) => {
@@ -118,7 +118,7 @@ export class PythonBackend {
         if (error) {
           reject(new Error(error));
         } else {
-          resolve(result);
+          resolve(result as T);
         }
       });
 
@@ -194,8 +194,9 @@ export class PythonBackend {
     try {
       const result = await this.chat(message, []);
       onReply(result);
-    } catch (e: any) {
-      onReply(`Error: ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      onReply(`Error: ${message}`);
     }
   }
 

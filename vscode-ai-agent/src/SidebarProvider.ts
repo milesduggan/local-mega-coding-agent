@@ -38,7 +38,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         if (!results.executor) failed.push("executor (DeepSeek)");
         vscode.window.showWarningMessage(`Some models failed to load: ${failed.join(", ")}`);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Model warm-up failed:", e);
       // Don't show error to user - models will load on first use
     }
@@ -55,7 +55,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   /**
    * Get current model status including load state and idle time.
    */
-  async getModelStatus(): Promise<any> {
+  async getModelStatus(): Promise<{
+    critic: { loaded: boolean; idle_seconds: number | null; model_path: string };
+    executor: { loaded: boolean; idle_seconds: number | null; model_path: string };
+    config: { idle_timeout_minutes: number; auto_unload_enabled: boolean };
+  }> {
     return this.backend.getModelStatus();
   }
 
@@ -66,8 +70,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       const relativePath = vscode.workspace.asRelativePath(filePath);
       this.selectedFiles.set(relativePath, content);
       this.updateWebview();
-    } catch (e: any) {
-      vscode.window.showErrorMessage(`Failed to read file: ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      vscode.window.showErrorMessage(`Failed to read file: ${message}`);
     }
   }
 
@@ -133,8 +138,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       const response = await this.backend.chat(text, this.conversationHistory);
       this.conversationHistory.push({ role: "assistant", content: response });
       this.updateWebview();
-    } catch (e: any) {
-      this.conversationHistory.push({ role: "assistant", content: `Error: ${e.message}` });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.conversationHistory.push({ role: "assistant", content: `Error: ${message}` });
       this.updateWebview();
     }
   }
@@ -178,8 +184,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
       this.currentState = "reviewing";
       this.updateWebview();
-    } catch (e: any) {
-      vscode.window.showErrorMessage(`Execution failed: ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      vscode.window.showErrorMessage(`Execution failed: ${message}`);
       this.currentState = "chatting";
       this.updateWebview();
     }
@@ -210,8 +217,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this.reviewVerdict = "";
       this.currentState = "chatting";
       this.updateWebview();
-    } catch (e: any) {
-      vscode.window.showErrorMessage(`Failed to apply changes: ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      vscode.window.showErrorMessage(`Failed to apply changes: ${message}`);
       this.currentState = "reviewing";
       this.updateWebview();
     }
@@ -282,10 +290,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           .join("\n");
         throw new Error(`Syntax validation failed:\n${errorMsg}`);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       // If validation service unavailable, log warning but proceed
       // (primary validation is in Python backend during generation)
-      if (e.message.includes("timed out") || e.message.includes("Backend")) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (message.includes("timed out") || message.includes("Backend")) {
         console.warn("Validation service unavailable, proceeding without TypeScript-side validation");
       } else {
         throw e;

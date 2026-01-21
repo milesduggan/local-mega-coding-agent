@@ -10,7 +10,6 @@ Example:
 """
 
 import os
-from typing import Union
 
 
 def _get_int(name: str, default: int) -> int:

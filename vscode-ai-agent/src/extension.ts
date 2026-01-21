@@ -103,8 +103,9 @@ export function activate(context: vscode.ExtensionContext) {
         } else {
           vscode.window.showInformationMessage("No models were loaded.");
         }
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Failed to unload models: ${e.message}`);
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        vscode.window.showErrorMessage(`Failed to unload models: ${message}`);
       }
     })
   );
@@ -137,8 +138,9 @@ export function activate(context: vscode.ExtensionContext) {
         ].join("\n");
 
         vscode.window.showInformationMessage(message, { modal: true });
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Failed to get model status: ${e.message}`);
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        vscode.window.showErrorMessage(`Failed to get model status: ${message}`);
       }
     })
   );
