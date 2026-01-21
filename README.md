@@ -140,6 +140,10 @@ local-ai-agent/
 │   ├── critic/                 # LLaMA interface
 │   ├── executor/               # DeepSeek interface
 │   ├── memory/                 # Session persistence
+│   ├── tools/                  # Extensible tool system
+│   │   ├── bash.py             # Shell command execution
+│   │   ├── file_ops.py         # File operations
+│   │   └── search.py           # Glob, grep, find_definition
 │   └── config.py               # Central configuration
 ├── vscode-ai-agent/
 │   ├── src/
@@ -149,8 +153,11 @@ local-ai-agent/
 │   └── package.json
 ├── docs/
 │   ├── ARCHITECTURE.md         # Technical architecture
-│   └── CONFIGURATION.md        # Configuration reference
-├── tests/                      # Test files
+│   ├── CONFIGURATION.md        # Configuration reference
+│   └── TOOLS.md                # Tool system reference
+├── tests/
+│   ├── test_executor.py        # Executor security tests
+│   └── test_tools.py           # Tool system tests (52 tests)
 ├── setup_models.py             # Model download script
 └── README.md
 ```
