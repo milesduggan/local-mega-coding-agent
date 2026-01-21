@@ -121,6 +121,26 @@ AUTO_UNLOAD_ENABLED = os.environ.get(
 
 
 # =============================================================================
+# Model Paths
+# =============================================================================
+
+# Project root (parent of scripts/)
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# LLaMA model path (critic) - can be overridden via environment variable
+LLAMA_MODEL_PATH = os.environ.get(
+    "AI_AGENT_LLAMA_MODEL_PATH",
+    os.path.join(_PROJECT_ROOT, "models", "llama", "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf")
+)
+
+# DeepSeek model path (executor) - can be overridden via environment variable
+DEEPSEEK_MODEL_PATH = os.environ.get(
+    "AI_AGENT_DEEPSEEK_MODEL_PATH",
+    os.path.join(_PROJECT_ROOT, "models", "deepseek", "deepseek-coder-6.7b-instruct.Q4_K_M.gguf")
+)
+
+
+# =============================================================================
 # Debug Settings
 # =============================================================================
 

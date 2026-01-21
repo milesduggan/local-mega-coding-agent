@@ -34,7 +34,8 @@ from scripts.chunker.reconstructor import reconstruct_from_llm_output, Reconstru
 from scripts.backend.model_manager import get_manager, ModelType
 from scripts.config import (
     DEEPSEEK_N_CTX, DEEPSEEK_MAX_TOKENS, DEEPSEEK_TEMPERATURE,
-    DEEPSEEK_TOP_P, DEEPSEEK_REPEAT_PENALTY, DEEPSEEK_N_THREADS
+    DEEPSEEK_TOP_P, DEEPSEEK_REPEAT_PENALTY, DEEPSEEK_N_THREADS,
+    DEEPSEEK_MODEL_PATH,
 )
 
 log = logging.getLogger(__name__)
@@ -52,9 +53,7 @@ class ExecutionError(Exception):
     pass
 
 
-_DEEPSEEK_MODEL_PATH = os.path.join(
-    _PROJECT_ROOT, "models", "deepseek", "deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
-)
+_DEEPSEEK_MODEL_PATH = DEEPSEEK_MODEL_PATH  # Use centralized config
 
 # Register model with the ModelManager
 _manager = get_manager()
@@ -92,7 +91,11 @@ def warm_up() -> bool:
     try:
         _get_deepseek()
         return True
-    except Exception:
+    except FileNotFoundError as e:
+        log.error(f"Executor model file not found: {e}")
+        return False
+    except Exception as e:
+        log.error(f"Failed to load executor model: {type(e).__name__}: {e}")
         return False
 
 

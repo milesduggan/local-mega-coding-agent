@@ -201,8 +201,8 @@ class ModelManager:
         try:
             if hasattr(info.instance, 'reset'):
                 info.instance.reset()
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Failed to reset model cache during unload: {type(e).__name__}: {e}")
 
         # Delete the instance
         instance = info.instance

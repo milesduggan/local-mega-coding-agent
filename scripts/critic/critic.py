@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from typing import List, Dict, Optional
@@ -14,10 +15,13 @@ from scripts.config import (
     LLAMA_N_CTX, LLAMA_N_THREADS,
     LLAMA_CHAT_MAX_TOKENS, LLAMA_CHAT_TEMPERATURE,
     LLAMA_REVIEW_MAX_TOKENS, LLAMA_REVIEW_TEMPERATURE,
-    LLAMA_NORMALIZE_MAX_TOKENS, LLAMA_NORMALIZE_TEMPERATURE
+    LLAMA_NORMALIZE_MAX_TOKENS, LLAMA_NORMALIZE_TEMPERATURE,
+    LLAMA_MODEL_PATH,
 )
 
-MODEL_PATH = os.path.join(_PROJECT_ROOT, "models", "llama", "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf")
+log = logging.getLogger(__name__)
+
+MODEL_PATH = LLAMA_MODEL_PATH  # Use centralized config
 STORAGE_DIR = os.path.join(_PROJECT_ROOT, ".ai-agent-memory")
 
 HANDOFF_PHRASE = "Proceed with implementation."
@@ -104,7 +108,11 @@ def warm_up() -> bool:
     try:
         _get_llm()
         return True
-    except Exception:
+    except FileNotFoundError as e:
+        log.error(f"Critic model file not found: {e}")
+        return False
+    except Exception as e:
+        log.error(f"Failed to load critic model: {type(e).__name__}: {e}")
         return False
 
 
