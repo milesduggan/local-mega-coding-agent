@@ -5,6 +5,28 @@ import { PythonBackend, ChatMessage } from "./pythonBackend";
 
 type FlowState = "chatting" | "executing" | "reviewing" | "applying";
 
+/**
+ * Validate that a file path stays within the workspace root.
+ * Prevents path traversal attacks (e.g., "../../../etc/passwd").
+ *
+ * @param filePath - The path to validate (relative or absolute)
+ * @param workspaceRoot - The workspace root directory
+ * @returns The resolved absolute path if valid
+ * @throws Error if the path escapes the workspace
+ */
+function validatePathInWorkspace(filePath: string, workspaceRoot: string): string {
+  const resolved = path.resolve(workspaceRoot, filePath);
+  const normalizedRoot = path.resolve(workspaceRoot);
+
+  // Ensure the resolved path starts with the workspace root
+  // Use path.sep to handle both "/" and "\" correctly
+  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
+    throw new Error(`Path traversal blocked: "${filePath}" escapes workspace`);
+  }
+
+  return resolved;
+}
+
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "ai-agent.sidebarView";
 
@@ -66,6 +88,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   addFile(uri: vscode.Uri) {
     const filePath = uri.fsPath;
     try {
+      // Validate the path stays within workspace
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (workspaceFolder) {
+        validatePathInWorkspace(filePath, workspaceFolder.uri.fsPath);
+      }
+
       const content = fs.readFileSync(filePath, "utf-8");
       const relativePath = vscode.workspace.asRelativePath(filePath);
       this.selectedFiles.set(relativePath, content);
@@ -204,9 +232,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       for (const [filePath] of this.selectedFiles) {
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (workspaceFolder) {
-          const fullPath = path.join(workspaceFolder.uri.fsPath, filePath);
-          if (fs.existsSync(fullPath)) {
-            this.selectedFiles.set(filePath, fs.readFileSync(fullPath, "utf-8"));
+          try {
+            const fullPath = validatePathInWorkspace(filePath, workspaceFolder.uri.fsPath);
+            if (fs.existsSync(fullPath)) {
+              this.selectedFiles.set(filePath, fs.readFileSync(fullPath, "utf-8"));
+            }
+          } catch {
+            // If path validation fails during reload, remove the file from selection
+            this.selectedFiles.delete(filePath);
           }
         }
       }
@@ -265,7 +298,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const patchedFiles: Map<string, { fullPath: string; content: string }> = new Map();
 
     for (const [filePath, patch] of filePatches) {
-      const fullPath = path.join(workspaceFolder.uri.fsPath, filePath);
+      // Validate the path stays within workspace (prevents path traversal in diffs)
+      const fullPath = validatePathInWorkspace(filePath, workspaceFolder.uri.fsPath);
 
       if (!fs.existsSync(fullPath)) {
         throw new Error(`File not found: ${filePath}`);

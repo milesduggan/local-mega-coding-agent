@@ -16,6 +16,7 @@ import ast
 import difflib
 import logging
 import os
+import pathlib
 import re
 import sys
 from typing import Dict, List, Optional, Tuple
@@ -37,6 +38,13 @@ from scripts.config import (
 )
 
 log = logging.getLogger(__name__)
+
+# =============================================================================
+# Input Validation Limits (security hardening)
+# =============================================================================
+MAX_TASK_LENGTH = 10_000  # 10KB max task description
+MAX_TOTAL_FILE_SIZE = 50_000_000  # 50MB total across all files
+MAX_FILES = 100  # Maximum number of files per execution
 
 
 class ExecutionError(Exception):
@@ -237,6 +245,19 @@ def _parse_file_blocks(output: str, allowed_files: set) -> Dict[str, str]:
             continue
         seen_files.add(filename)
 
+        # GUARDRAIL: Validate filename is safe (path traversal prevention)
+        parsed_path = pathlib.PurePath(filename)
+        if parsed_path.is_absolute():
+            raise ExecutionError(
+                f"Absolute paths not allowed in output: '{filename}'. "
+                "Model must only reference relative file paths."
+            )
+        if ".." in parsed_path.parts:
+            raise ExecutionError(
+                f"Path traversal not allowed in output: '{filename}'. "
+                "Model must not use '..' in file paths."
+            )
+
         # GUARDRAIL: Check if file is in allowed set (hallucination guard)
         if filename not in allowed_files:
             raise ExecutionError(
@@ -378,8 +399,27 @@ def execute(task: str, files: Dict[str, str]) -> str:
     if not task or not task.strip():
         raise ExecutionError("Task is empty.")
 
+    if len(task) > MAX_TASK_LENGTH:
+        raise ExecutionError(
+            f"Task too long ({len(task):,} chars, max {MAX_TASK_LENGTH:,}). "
+            "Please simplify the task description."
+        )
+
     if not files:
         raise ExecutionError("No files provided to executor.")
+
+    if len(files) > MAX_FILES:
+        raise ExecutionError(
+            f"Too many files ({len(files)}, max {MAX_FILES}). "
+            "Please reduce the number of files."
+        )
+
+    total_size = sum(len(content) for content in files.values())
+    if total_size > MAX_TOTAL_FILE_SIZE:
+        raise ExecutionError(
+            f"Total file size too large ({total_size / 1_000_000:.1f}MB, max 50MB). "
+            "Please reduce the amount of code."
+        )
 
     updated_files: Dict[str, str] = {}
     files_needing_full_execution: Dict[str, str] = {}
