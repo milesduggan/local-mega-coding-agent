@@ -47,6 +47,14 @@
       {
         "command": "ai-agent.clearFiles",
         "title": "AI Agent: Clear All Files"
+      },
+      {
+        "command": "ai-agent.unloadModels",
+        "title": "AI Agent: Unload Models"
+      },
+      {
+        "command": "ai-agent.modelStatus",
+        "title": "AI Agent: Show Model Status"
       }
     ],
     "menus": {
@@ -65,6 +73,41 @@
           "type": "string",
           "default": "python",
           "description": "Path to Python executable"
+        },
+        "ai-agent.timeouts.chat": {
+          "type": "number",
+          "default": 60000,
+          "description": "Timeout for chat operations in milliseconds"
+        },
+        "ai-agent.timeouts.normalize": {
+          "type": "number",
+          "default": 60000,
+          "description": "Timeout for task normalization in milliseconds"
+        },
+        "ai-agent.timeouts.execute": {
+          "type": "number",
+          "default": 180000,
+          "description": "Timeout for code generation in milliseconds"
+        },
+        "ai-agent.timeouts.review": {
+          "type": "number",
+          "default": 60000,
+          "description": "Timeout for diff review in milliseconds"
+        },
+        "ai-agent.timeouts.warmup": {
+          "type": "number",
+          "default": 120000,
+          "description": "Timeout for model warm-up in milliseconds"
+        },
+        "ai-agent.modelIdleTimeoutMinutes": {
+          "type": "number",
+          "default": 15,
+          "description": "Minutes of inactivity before auto-unloading models (0 to disable)"
+        },
+        "ai-agent.autoUnloadEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically unload models after idle timeout"
         }
       }
     }

@@ -3,12 +3,19 @@ import sys
 from typing import List, Dict, Optional
 from llama_cpp import Llama
 
-# Add parent directory to path for memory module import
+# Add parent directory to path for imports
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(_MODULE_DIR))
-sys.path.insert(0, os.path.join(_PROJECT_ROOT, "scripts"))
+sys.path.insert(0, _PROJECT_ROOT)
 
-from memory.context_manager import ContextManager
+from scripts.memory.context_manager import ContextManager
+from scripts.backend.model_manager import get_manager, ModelType
+from scripts.config import (
+    LLAMA_N_CTX, LLAMA_N_THREADS,
+    LLAMA_CHAT_MAX_TOKENS, LLAMA_CHAT_TEMPERATURE,
+    LLAMA_REVIEW_MAX_TOKENS, LLAMA_REVIEW_TEMPERATURE,
+    LLAMA_NORMALIZE_MAX_TOKENS, LLAMA_NORMALIZE_TEMPERATURE
+)
 
 MODEL_PATH = os.path.join(_PROJECT_ROOT, "models", "llama", "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf")
 STORAGE_DIR = os.path.join(_PROJECT_ROOT, ".ai-agent-memory")
@@ -19,25 +26,66 @@ HANDOFF_PHRASE = "Proceed with implementation."
 Message = Dict[str, str]
 History = List[Message]
 
-_llm = None
 _context_manager = None
+
+# Register model with the ModelManager
+_manager = get_manager()
+
+
+def _create_llm() -> Llama:
+    """Factory function to create LLaMA model instance."""
+    return Llama(
+        model_path=MODEL_PATH,
+        n_ctx=LLAMA_N_CTX,
+        n_threads=LLAMA_N_THREADS,
+        verbose=False,
+    )
+
+
+_manager.register_model(
+    ModelType.CRITIC,
+    MODEL_PATH,
+    {"n_ctx": LLAMA_N_CTX, "n_threads": LLAMA_N_THREADS},
+    _create_llm
+)
+
+
+class CriticError(Exception):
+    """Raised when critic encounters an error."""
+    pass
+
+
+def _extract_response_text(response: dict) -> str:
+    """
+    Safely extract text from LLM chat completion response.
+    Validates structure before accessing nested fields.
+    """
+    if not response or not isinstance(response, dict):
+        raise CriticError("LLM returned invalid response structure")
+
+    choices = response.get("choices")
+    if not choices or not isinstance(choices, list) or len(choices) == 0:
+        raise CriticError("LLM returned no choices in response")
+
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        raise CriticError("LLM response choice is not a dict")
+
+    message = first_choice.get("message")
+    if not isinstance(message, dict) or "content" not in message:
+        raise CriticError("LLM response missing 'message.content' field")
+
+    content = message["content"]
+    if content is None:
+        raise CriticError("LLM returned null content")
+
+    text = str(content).strip()
+    return text.encode("utf-8", errors="replace").decode("utf-8")
 
 
 def _get_llm() -> Llama:
-    global _llm
-    if _llm is None:
-        if not os.path.exists(MODEL_PATH):
-            raise FileNotFoundError(
-                f"Model not found: {MODEL_PATH}\n"
-                f"Run setup_models.py to download the model."
-            )
-        _llm = Llama(
-            model_path=MODEL_PATH,
-            n_ctx=4096,   # Sufficient for chat/review tasks
-            n_threads=4,
-            verbose=False,
-        )
-    return _llm
+    """Get the critic model via ModelManager (lazy loading, access tracking)."""
+    return _manager.get_model(ModelType.CRITIC)
 
 
 def _get_context_manager() -> ContextManager:
@@ -45,6 +93,32 @@ def _get_context_manager() -> ContextManager:
     if _context_manager is None:
         _context_manager = ContextManager(STORAGE_DIR)
     return _context_manager
+
+
+def warm_up() -> bool:
+    """
+    Pre-load the LLaMA model into memory.
+    Called during extension activation to eliminate first-request latency.
+    Returns True if model loaded successfully.
+    """
+    try:
+        _get_llm()
+        return True
+    except Exception:
+        return False
+
+
+def unload() -> bool:
+    """
+    Unload the critic model to free memory.
+    Returns True if model was unloaded, False if not loaded.
+    """
+    return _manager.unload_model(ModelType.CRITIC)
+
+
+def is_loaded() -> bool:
+    """Check if critic model is currently loaded."""
+    return _manager.is_loaded(ModelType.CRITIC)
 
 
 def chat(user_message: str, history: Optional[History] = None) -> str:
@@ -76,13 +150,12 @@ def chat(user_message: str, history: Optional[History] = None) -> str:
     llm = _get_llm()
     response = llm.create_chat_completion(
         messages=messages,
-        max_tokens=512,
-        temperature=0.7,
+        max_tokens=LLAMA_CHAT_MAX_TOKENS,
+        temperature=LLAMA_CHAT_TEMPERATURE,
         top_p=0.9,
     )
 
-    text = response["choices"][0]["message"]["content"].strip()
-    return text.encode("utf-8", errors="replace").decode("utf-8")
+    return _extract_response_text(response)
 
 
 def review_diff(task: str, diff: str) -> str:
@@ -111,12 +184,11 @@ def review_diff(task: str, diff: str) -> str:
     llm = _get_llm()
     response = llm.create_chat_completion(
         messages=messages,
-        max_tokens=256,
-        temperature=0.3,
+        max_tokens=LLAMA_REVIEW_MAX_TOKENS,
+        temperature=LLAMA_REVIEW_TEMPERATURE,
     )
 
-    text = response["choices"][0]["message"]["content"].strip()
-    return text.encode("utf-8", errors="replace").decode("utf-8")
+    return _extract_response_text(response)
 
 
 def save_session_summary(summary: str) -> None:
@@ -198,9 +270,8 @@ If you cannot determine the task clearly, output ONLY a clarification question s
     llm = _get_llm()
     response = llm.create_chat_completion(
         messages=messages,
-        max_tokens=300,
-        temperature=0.2,
+        max_tokens=LLAMA_NORMALIZE_MAX_TOKENS,
+        temperature=LLAMA_NORMALIZE_TEMPERATURE,
     )
 
-    text = response["choices"][0]["message"]["content"].strip()
-    return text.encode("utf-8", errors="replace").decode("utf-8")
+    return _extract_response_text(response)

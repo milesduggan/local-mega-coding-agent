@@ -3,20 +3,40 @@ Executor module - synthesizes diffs locally from DeepSeek output.
 
 Flow:
 1. Receive task and original files
-2. Call DeepSeek to get full updated file contents
-3. Parse DeepSeek output into file blocks
-4. Generate unified diffs via difflib (original vs updated)
-5. Return combined diff for review gate
+2. For Python files: parse into chunks, select relevant ones
+3. Call DeepSeek with chunks (or full file for non-Python)
+4. Parse output and reconstruct file
+5. Generate unified diffs via difflib
+6. Return combined diff for review gate
 
 DeepSeek never emits diffs. All diff generation is deterministic and local.
 """
 
+import ast
 import difflib
+import logging
 import os
 import re
-from typing import Dict, Optional
+import sys
+from typing import Dict, List, Optional, Tuple
 
 from llama_cpp import Llama
+
+# Add project root to path for chunker imports
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(_MODULE_DIR))
+sys.path.insert(0, _PROJECT_ROOT)
+
+from scripts.chunker.python_chunker import CodeChunk, parse_python_file
+from scripts.chunker.selector import select_relevant_chunks
+from scripts.chunker.reconstructor import reconstruct_from_llm_output, ReconstructionError
+from scripts.backend.model_manager import get_manager, ModelType
+from scripts.config import (
+    DEEPSEEK_N_CTX, DEEPSEEK_MAX_TOKENS, DEEPSEEK_TEMPERATURE,
+    DEEPSEEK_TOP_P, DEEPSEEK_REPEAT_PENALTY, DEEPSEEK_N_THREADS
+)
+
+log = logging.getLogger(__name__)
 
 
 class ExecutionError(Exception):
@@ -24,32 +44,61 @@ class ExecutionError(Exception):
     pass
 
 
-# Module-level model instance (lazy loaded)
-_deepseek_llm: Optional[Llama] = None
-
-_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(_MODULE_DIR))
 _DEEPSEEK_MODEL_PATH = os.path.join(
     _PROJECT_ROOT, "models", "deepseek", "deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
 )
 
+# Register model with the ModelManager
+_manager = get_manager()
+
+
+def _create_deepseek() -> Llama:
+    """Factory function to create DeepSeek model instance."""
+    return Llama(
+        model_path=_DEEPSEEK_MODEL_PATH,
+        n_ctx=DEEPSEEK_N_CTX,
+        n_threads=DEEPSEEK_N_THREADS,
+        verbose=False,
+    )
+
+
+_manager.register_model(
+    ModelType.EXECUTOR,
+    _DEEPSEEK_MODEL_PATH,
+    {"n_ctx": DEEPSEEK_N_CTX, "n_threads": DEEPSEEK_N_THREADS},
+    _create_deepseek
+)
+
 
 def _get_deepseek() -> Llama:
-    """Get or initialize DeepSeek model."""
-    global _deepseek_llm
-    if _deepseek_llm is None:
-        if not os.path.exists(_DEEPSEEK_MODEL_PATH):
-            raise ExecutionError(
-                f"DeepSeek model not found: {_DEEPSEEK_MODEL_PATH}\n"
-                "Run setup_models.py to download the model."
-            )
-        _deepseek_llm = Llama(
-            model_path=_DEEPSEEK_MODEL_PATH,
-            n_ctx=8192,   # Enough for typical file edits
-            n_threads=4,
-            verbose=False,
-        )
-    return _deepseek_llm
+    """Get the executor model via ModelManager (lazy loading, access tracking)."""
+    return _manager.get_model(ModelType.EXECUTOR)
+
+
+def warm_up() -> bool:
+    """
+    Pre-load the DeepSeek model into memory.
+    Called during extension activation to eliminate first-request latency.
+    Returns True if model loaded successfully.
+    """
+    try:
+        _get_deepseek()
+        return True
+    except Exception:
+        return False
+
+
+def unload() -> bool:
+    """
+    Unload the executor model to free memory.
+    Returns True if model was unloaded, False if not loaded.
+    """
+    return _manager.unload_model(ModelType.EXECUTOR)
+
+
+def is_loaded() -> bool:
+    """Check if executor model is currently loaded."""
+    return _manager.is_loaded(ModelType.EXECUTOR)
 
 
 def _call_deepseek(prompt: str) -> str:
@@ -57,13 +106,26 @@ def _call_deepseek(prompt: str) -> str:
     llm = _get_deepseek()
     response = llm(
         prompt,
-        max_tokens=1024,
-        temperature=0.2,
-        top_p=0.9,
-        repeat_penalty=1.1,
+        max_tokens=DEEPSEEK_MAX_TOKENS,
+        temperature=DEEPSEEK_TEMPERATURE,
+        top_p=DEEPSEEK_TOP_P,
+        repeat_penalty=DEEPSEEK_REPEAT_PENALTY,
         stop=["</s>", "<|EOT|>", "### Instruction", "### Explanation"],
     )
-    text = response["choices"][0]["text"].strip()
+
+    # Validate response structure before accessing
+    if not response or not isinstance(response, dict):
+        raise ExecutionError("DeepSeek returned invalid response structure")
+
+    choices = response.get("choices")
+    if not choices or not isinstance(choices, list) or len(choices) == 0:
+        raise ExecutionError("DeepSeek returned no choices in response")
+
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict) or "text" not in first_choice:
+        raise ExecutionError("DeepSeek response missing 'text' field")
+
+    text = first_choice["text"].strip()
     return text.encode("utf-8", errors="replace").decode("utf-8")
 
 
@@ -88,6 +150,35 @@ Do not include explanations, markdown, or any other text.
 
 ### Input Files:
 {files_section}
+
+### Response:
+"""
+
+
+def _build_chunk_prompt(task: str, filename: str, chunks: List[CodeChunk]) -> str:
+    """
+    Build prompt for chunk-based editing.
+    Only sends relevant chunks instead of full file.
+    """
+    chunks_section = "\n\n".join(
+        f"CHUNK: {c.name} ({c.chunk_type}, lines {c.start_line}-{c.end_line})\n{c.content}"
+        for c in chunks
+    )
+
+    return f"""### Instruction:
+Modify the following code chunks to complete the task. Output ONLY the modified chunks.
+Use this exact format for each chunk you modify:
+
+CHUNK: <chunk_name>
+<complete chunk contents>
+
+Output only chunks that need changes. Do not include explanations or markdown.
+
+### Task:
+{task}
+
+### Chunks from {filename}:
+{chunks_section}
 
 ### Response:
 """
@@ -218,14 +309,65 @@ def _synthesize_diffs(original_files: Dict[str, str], updated_files: Dict[str, s
     return '\n'.join(diffs)
 
 
+def _execute_chunked(task: str, filename: str, content: str) -> Optional[str]:
+    """
+    Execute task using chunk-based approach for a single Python file.
+
+    Returns updated file content, or None if chunking fails/isn't applicable.
+    """
+    try:
+        # Parse file into chunks
+        all_chunks = parse_python_file(content, filename)
+        if not all_chunks:
+            log.info(f"No chunks extracted from {filename}, falling back to full-file")
+            return None
+
+        # Select relevant chunks
+        relevant_chunks = select_relevant_chunks(task, all_chunks)
+        if not relevant_chunks:
+            log.info(f"No relevant chunks found for task, falling back to full-file")
+            return None
+
+        # Log token savings
+        full_tokens = len(content) // 4
+        chunk_tokens = sum(len(c.content) // 4 for c in relevant_chunks)
+        savings = ((full_tokens - chunk_tokens) / full_tokens * 100) if full_tokens > 0 else 0
+        log.info(
+            f"Chunk-based execution: {len(relevant_chunks)}/{len(all_chunks)} chunks, "
+            f"~{savings:.0f}% token savings"
+        )
+
+        # Build chunk prompt and call DeepSeek
+        prompt = _build_chunk_prompt(task, filename, relevant_chunks)
+        raw_output = _call_deepseek(prompt)
+
+        if not raw_output:
+            log.warning("DeepSeek returned empty output for chunk-based execution")
+            return None
+
+        # Reconstruct file from chunk output
+        updated_content = reconstruct_from_llm_output(content, all_chunks, raw_output)
+        return updated_content
+
+    except SyntaxError as e:
+        log.info(f"Failed to parse {filename} (syntax error), falling back to full-file: {e}")
+        return None
+    except ReconstructionError as e:
+        log.warning(f"Chunk reconstruction failed for {filename}, falling back to full-file: {e}")
+        return None
+    except Exception as e:
+        log.warning(f"Chunk-based execution failed for {filename}: {e}")
+        return None
+
+
 def execute(task: str, files: Dict[str, str]) -> str:
     """
     Execute a coding task against provided files and return a unified diff.
 
     Flow:
     1. Validate inputs
-    2. Call DeepSeek for full updated file contents
-    3. Parse file blocks from output
+    2. For Python files: try chunk-based execution (fewer tokens)
+    3. Fallback to full-file for non-Python or if chunking fails
     4. Synthesize unified diffs locally via difflib
     5. Return diff for review gate
 
@@ -239,28 +381,61 @@ def execute(task: str, files: Dict[str, str]) -> str:
     if not files:
         raise ExecutionError("No files provided to executor.")
 
-    # Build prompt and call DeepSeek
-    prompt = _build_prompt(task, files)
-    raw_output = _call_deepseek(prompt)
+    updated_files: Dict[str, str] = {}
+    files_needing_full_execution: Dict[str, str] = {}
 
-    if not raw_output:
-        raise ExecutionError("DeepSeek returned empty output.")
+    # Try chunk-based execution for Python files
+    for filename, content in files.items():
+        if filename.endswith('.py'):
+            updated = _execute_chunked(task, filename, content)
+            if updated is not None:
+                updated_files[filename] = updated
+            else:
+                files_needing_full_execution[filename] = content
+        else:
+            files_needing_full_execution[filename] = content
 
-    # Build allowed files set from input
-    allowed_files = set(files.keys())
+    # Full-file execution for remaining files
+    if files_needing_full_execution:
+        prompt = _build_prompt(task, files_needing_full_execution)
+        raw_output = _call_deepseek(prompt)
 
-    # Parse file blocks from output with strict validation
-    # This will raise ExecutionError immediately if:
-    # - Unknown file is referenced (hallucination)
-    # - Duplicate FILE blocks detected
-    updated_files = _parse_file_blocks(raw_output, allowed_files)
+        if not raw_output:
+            raise ExecutionError("DeepSeek returned empty output for full-file execution.")
 
-    # GUARDRAIL: Zero valid FILE blocks is a hard failure
+        # Build allowed files set from files needing full execution
+        allowed_files = set(files_needing_full_execution.keys())
+
+        # Parse file blocks from output with strict validation
+        full_file_updates = _parse_file_blocks(raw_output, allowed_files)
+
+        # GUARDRAIL: Validate syntax of generated Python files before proceeding
+        for filename, content in full_file_updates.items():
+            if filename.endswith('.py'):
+                try:
+                    ast.parse(content)
+                except SyntaxError as e:
+                    raise ExecutionError(
+                        f"Generated code for '{filename}' has invalid syntax "
+                        f"(line {e.lineno}): {e.msg}\n"
+                        "The model produced malformed code. Please try again or simplify the task."
+                    )
+
+        if not full_file_updates:
+            raise ExecutionError(
+                "DeepSeek produced zero valid FILE blocks. "
+                "Expected format: FILE: <filename>\\n<contents>. "
+                "Execution cannot proceed without file output."
+            )
+
+        # Merge with chunk-based updates
+        updated_files.update(full_file_updates)
+
+    # GUARDRAIL: At least one file must have been updated
     if not updated_files:
         raise ExecutionError(
-            "DeepSeek produced zero valid FILE blocks. "
-            "Expected format: FILE: <filename>\\n<contents>. "
-            "Execution cannot proceed without file output."
+            "No files were updated. "
+            "Either the task produced no changes or all execution paths failed."
         )
 
     # Synthesize unified diffs locally

@@ -12,6 +12,9 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
+  // Warm up models in background (don't await - let it run async)
+  provider.warmUpModels();
+
   // Register file commands
   context.subscriptions.push(
     vscode.commands.registerCommand("ai-agent.addFile", (uri?: vscode.Uri) => {
@@ -66,6 +69,77 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("ai-agent.openSidebar", () => {
       vscode.commands.executeCommand("workbench.view.extension.ai-agent-sidebar");
+    })
+  );
+
+  // Model lifecycle commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand("ai-agent.unloadModels", async () => {
+      const choice = await vscode.window.showQuickPick(
+        ["All Models", "Critic (LLaMA)", "Executor (DeepSeek)"],
+        { placeHolder: "Select models to unload" }
+      );
+
+      if (!choice) {
+        return;
+      }
+
+      const modelMap: Record<string, "all" | "critic" | "executor"> = {
+        "All Models": "all",
+        "Critic (LLaMA)": "critic",
+        "Executor (DeepSeek)": "executor"
+      };
+
+      try {
+        const result = await provider.unloadModels(modelMap[choice]);
+        const unloaded = Object.entries(result)
+          .filter(([, v]) => v)
+          .map(([k]) => k);
+
+        if (unloaded.length > 0) {
+          vscode.window.showInformationMessage(
+            `Unloaded: ${unloaded.join(", ")}`
+          );
+        } else {
+          vscode.window.showInformationMessage("No models were loaded.");
+        }
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Failed to unload models: ${e.message}`);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("ai-agent.modelStatus", async () => {
+      try {
+        const status = await provider.getModelStatus();
+
+        const formatIdle = (seconds: number | null): string => {
+          if (seconds === null) {
+            return "N/A";
+          }
+          if (seconds < 60) {
+            return `${seconds}s`;
+          }
+          return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+        };
+
+        const criticStatus = status.critic?.loaded ? "Loaded" : "Unloaded";
+        const executorStatus = status.executor?.loaded ? "Loaded" : "Unloaded";
+        const criticIdle = status.critic?.loaded ? ` (idle: ${formatIdle(status.critic.idle_seconds)})` : "";
+        const executorIdle = status.executor?.loaded ? ` (idle: ${formatIdle(status.executor.idle_seconds)})` : "";
+
+        const message = [
+          `Critic (LLaMA): ${criticStatus}${criticIdle}`,
+          `Executor (DeepSeek): ${executorStatus}${executorIdle}`,
+          `Auto-unload: ${status.config?.auto_unload_enabled ? "Enabled" : "Disabled"}`,
+          `Idle timeout: ${status.config?.idle_timeout_minutes ?? 15} minutes`
+        ].join("\n");
+
+        vscode.window.showInformationMessage(message, { modal: true });
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Failed to get model status: ${e.message}`);
+      }
     })
   );
 }

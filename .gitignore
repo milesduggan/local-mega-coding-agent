@@ -21,3 +21,6 @@ Thumbs.db
 
 # Build artifacts
 vscode-ai-agent/out/
+
+# Claude Code local config
+.claude/

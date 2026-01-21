@@ -22,6 +22,43 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.backend = new PythonBackend(python, context.extensionPath);
   }
 
+  /**
+   * Pre-load models into memory for faster first response.
+   * Call this after extension activation.
+   */
+  async warmUpModels(): Promise<void> {
+    try {
+      console.log("Warming up AI models...");
+      const results = await this.backend.warmUp("all");
+      console.log("Model warm-up complete:", results);
+
+      if (!results.critic || !results.executor) {
+        const failed = [];
+        if (!results.critic) failed.push("critic (LLaMA)");
+        if (!results.executor) failed.push("executor (DeepSeek)");
+        vscode.window.showWarningMessage(`Some models failed to load: ${failed.join(", ")}`);
+      }
+    } catch (e: any) {
+      console.error("Model warm-up failed:", e);
+      // Don't show error to user - models will load on first use
+    }
+  }
+
+  /**
+   * Unload models to free memory.
+   * @param models Which models to unload: 'critic', 'executor', or 'all'
+   */
+  async unloadModels(models: "all" | "critic" | "executor" = "all"): Promise<{ critic?: boolean; executor?: boolean }> {
+    return this.backend.unloadModels(models);
+  }
+
+  /**
+   * Get current model status including load state and idle time.
+   */
+  async getModelStatus(): Promise<any> {
+    return this.backend.getModelStatus();
+  }
+
   addFile(uri: vscode.Uri) {
     const filePath = uri.fsPath;
     try {
@@ -216,6 +253,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Parse unified diff and apply changes
     const filePatches = this.parseDiff(diff);
 
+    // First pass: compute all patched content without writing
+    const patchedFiles: Map<string, { fullPath: string; content: string }> = new Map();
+
     for (const [filePath, patch] of filePatches) {
       const fullPath = path.join(workspaceFolder.uri.fsPath, filePath);
 
@@ -225,7 +265,36 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
       const original = fs.readFileSync(fullPath, "utf-8");
       const patched = this.applyPatch(original, patch);
-      fs.writeFileSync(fullPath, patched, "utf-8");
+      patchedFiles.set(filePath, { fullPath, content: patched });
+    }
+
+    // Validate ALL files before writing ANY (defense-in-depth)
+    const filesToValidate: Record<string, string> = {};
+    for (const [filePath, { content }] of patchedFiles) {
+      filesToValidate[filePath] = content;
+    }
+
+    try {
+      const validation = await this.backend.validateFiles(filesToValidate);
+      if (!validation.valid) {
+        const errorMsg = Object.entries(validation.errors)
+          .map(([f, e]) => `${f}: ${e}`)
+          .join("\n");
+        throw new Error(`Syntax validation failed:\n${errorMsg}`);
+      }
+    } catch (e: any) {
+      // If validation service unavailable, log warning but proceed
+      // (primary validation is in Python backend during generation)
+      if (e.message.includes("timed out") || e.message.includes("Backend")) {
+        console.warn("Validation service unavailable, proceeding without TypeScript-side validation");
+      } else {
+        throw e;
+      }
+    }
+
+    // Write all validated files
+    for (const [, { fullPath, content }] of patchedFiles) {
+      fs.writeFileSync(fullPath, content, "utf-8");
     }
   }
 
@@ -240,7 +309,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         if (currentFile && currentPatch.length > 0) {
           result.set(currentFile, currentPatch);
         }
-        currentFile = line.substring(4).split("\t")[0];
+        // Extract filename, handling both "--- path" and "--- a/path" formats
+        let filename = line.substring(4).split("\t")[0];
+        // Remove "a/" or "b/" prefix if present (git diff format)
+        if (filename.startsWith("a/") || filename.startsWith("b/")) {
+          filename = filename.substring(2);
+        }
+        currentFile = filename;
         currentPatch = [line];
       } else if (currentFile) {
         currentPatch.push(line);
@@ -268,22 +343,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         if (match) {
           const oldStart = parseInt(match[1], 10) - 1;
 
-          // Copy lines before this hunk
-          while (origIndex < oldStart) {
+          // Copy lines before this hunk (with bounds check)
+          while (origIndex < oldStart && origIndex < originalLines.length) {
             result.push(originalLines[origIndex]);
             origIndex++;
           }
         }
       } else if (line.startsWith("-") && !line.startsWith("---")) {
-        // Remove line - skip it in original
-        origIndex++;
+        // Remove line - skip it in original (with bounds check)
+        if (origIndex < originalLines.length) {
+          origIndex++;
+        }
       } else if (line.startsWith("+") && !line.startsWith("+++")) {
         // Add line
         result.push(line.substring(1));
       } else if (line.startsWith(" ")) {
-        // Context line
-        result.push(originalLines[origIndex]);
-        origIndex++;
+        // Context line - use from patch if original is out of bounds
+        if (origIndex < originalLines.length) {
+          result.push(originalLines[origIndex]);
+          origIndex++;
+        } else {
+          // Fallback: use the content from the patch itself (minus the leading space)
+          result.push(line.substring(1));
+        }
       }
     }
 
