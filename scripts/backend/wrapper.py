@@ -35,6 +35,10 @@ from scripts.executor.executor import execute
 from scripts.executor.executor import warm_up as warm_up_executor
 from scripts.executor.executor import unload as unload_executor
 from scripts.backend.model_manager import get_manager
+from scripts.tools.registry import get_registry
+
+# Initialize tool registry with workspace (will be set via RPC)
+_tool_registry = get_registry()
 
 
 def send_response(id: int | None, result: Any = None, error: str | None = None) -> None:
@@ -205,6 +209,73 @@ def handle_model_status(params: dict) -> dict:
     return manager.get_status()
 
 
+def handle_set_workspace(params: dict) -> dict:
+    """
+    Set the workspace root for tool operations.
+
+    Must be called before using tools. Typically called on extension activation.
+
+    Params:
+        workspace_root: str - Absolute path to workspace root
+
+    Returns:
+        {"success": bool, "workspace_root": str}
+    """
+    workspace_root = params.get("workspace_root", "")
+
+    if not workspace_root:
+        raise ValueError("Missing 'workspace_root' parameter")
+
+    if not os.path.isabs(workspace_root):
+        raise ValueError("workspace_root must be an absolute path")
+
+    if not os.path.isdir(workspace_root):
+        raise ValueError(f"workspace_root is not a directory: {workspace_root}")
+
+    _tool_registry.set_workspace_root(workspace_root)
+    log.info(f"Workspace root set to: {workspace_root}")
+
+    return {"success": True, "workspace_root": workspace_root}
+
+
+def handle_list_tools(params: dict) -> list:
+    """
+    List all available tools with their schemas.
+
+    Returns:
+        List of tool schemas (name, description, parameters)
+    """
+    return _tool_registry.list_tools()
+
+
+def handle_execute_tool(params: dict) -> dict:
+    """
+    Execute a tool by name.
+
+    Params:
+        tool: str - Tool name
+        params: dict - Tool parameters
+
+    Returns:
+        {
+            "success": bool,
+            "output": str,
+            "error": str|null,
+            "metadata": dict
+        }
+    """
+    tool_name = params.get("tool", "")
+    tool_params = params.get("params", {})
+
+    if not tool_name:
+        raise ValueError("Missing 'tool' parameter")
+
+    # Execute the tool
+    result = _tool_registry.execute(tool_name, tool_params)
+
+    return result.to_dict()
+
+
 def handle_message(msg: dict) -> None:
     """Route a JSON-RPC message to the appropriate handler."""
     msg_id = msg.get("id")
@@ -249,6 +320,18 @@ def handle_message(msg: dict) -> None:
 
         elif method == "model_status":
             result = handle_model_status(params)
+            send_response(msg_id, result=result)
+
+        elif method == "set_workspace":
+            result = handle_set_workspace(params)
+            send_response(msg_id, result=result)
+
+        elif method == "list_tools":
+            result = handle_list_tools(params)
+            send_response(msg_id, result=result)
+
+        elif method == "execute_tool":
+            result = handle_execute_tool(params)
             send_response(msg_id, result=result)
 
         else:

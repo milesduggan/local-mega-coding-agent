@@ -12,7 +12,9 @@
 - **Dual-Model Architecture** - LLaMA 3.1 8B for chat/review + DeepSeek Coder 6.7B for code generation
 - **Critic-Executor-Review Workflow** - Safer code changes with built-in validation
 - **Smart Chunking** - 50-75% token savings on Python files via AST-based chunking
+- **Tool System** - Extensible tools for bash commands, file operations, and codebase search
 - **Auto Memory Management** - Automatically unloads idle models to free ~8-10GB RAM
+- **Security Hardened** - Path traversal protection and input validation
 - **Configurable** - Tune timeouts, model parameters, and behavior via settings
 
 ## Quick Start
