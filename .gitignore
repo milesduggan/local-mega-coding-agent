@@ -1,0 +1,23 @@
+# Model files (too large for git)
+models/**/*.gguf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ai-agent-memory/
+
+# Node
+node_modules/
+*.js.map
+
+# IDE
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+vscode-ai-agent/out/

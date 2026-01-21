@@ -8,13 +8,16 @@ Protocol: JSON-RPC 2.0 over stdin/stdout (one JSON object per line)
 """
 
 import json
+import os
 import sys
 from typing import Any
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(__file__).rsplit("scripts", 1)[0])
+# Add project root to path for imports
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(_MODULE_DIR))
+sys.path.insert(0, _PROJECT_ROOT)
 
-from scripts.critic.critic import chat, review, normalize_task, History
+from scripts.critic.critic import chat, review_diff, normalize_task, History
 from scripts.executor.executor import execute
 
 
@@ -74,7 +77,7 @@ def handle_review(params: dict) -> str:
     if not diff:
         raise ValueError("Missing 'diff' parameter")
 
-    return review(task, diff)
+    return review_diff(task, diff)
 
 
 def handle_normalize_task(params: dict) -> str:

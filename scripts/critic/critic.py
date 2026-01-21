@@ -33,8 +33,8 @@ def _get_llm() -> Llama:
             )
         _llm = Llama(
             model_path=MODEL_PATH,
-            n_ctx=16384,
-            n_threads=8,
+            n_ctx=4096,   # Sufficient for chat/review tasks
+            n_threads=4,
             verbose=False,
         )
     return _llm
@@ -85,7 +85,7 @@ def chat(user_message: str, history: Optional[History] = None) -> str:
     return text.encode("utf-8", errors="replace").decode("utf-8")
 
 
-def review(task: str, diff: str) -> str:
+def review_diff(task: str, diff: str) -> str:
     """
     Review a task and diff for correctness.
 

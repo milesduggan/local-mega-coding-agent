@@ -14,7 +14,7 @@ DeepSeek never emits diffs. All diff generation is deterministic and local.
 import difflib
 import os
 import re
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 from llama_cpp import Llama
 
@@ -30,7 +30,7 @@ _deepseek_llm: Optional[Llama] = None
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(_MODULE_DIR))
 _DEEPSEEK_MODEL_PATH = os.path.join(
-    _PROJECT_ROOT, "models", "deepseek", "deepseek-coder-6.7b-instruct.Q2_K.gguf"
+    _PROJECT_ROOT, "models", "deepseek", "deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
 )
 
 
@@ -45,21 +45,23 @@ def _get_deepseek() -> Llama:
             )
         _deepseek_llm = Llama(
             model_path=_DEEPSEEK_MODEL_PATH,
-            n_ctx=16384,
-            n_threads=8,
+            n_ctx=8192,   # Enough for typical file edits
+            n_threads=4,
             verbose=False,
         )
     return _deepseek_llm
 
 
 def _call_deepseek(prompt: str) -> str:
-    """Call DeepSeek model and return response text."""
+    """Call DeepSeek model using raw completion with Alpaca-style format."""
     llm = _get_deepseek()
     response = llm(
         prompt,
-        max_tokens=4096,
+        max_tokens=1024,
         temperature=0.2,
-        stop=["</s>", "<|EOT|>"],
+        top_p=0.9,
+        repeat_penalty=1.1,
+        stop=["</s>", "<|EOT|>", "### Instruction", "### Explanation"],
     )
     text = response["choices"][0]["text"].strip()
     return text.encode("utf-8", errors="replace").decode("utf-8")
@@ -67,57 +69,54 @@ def _call_deepseek(prompt: str) -> str:
 
 def _build_prompt(brief: str, files: Dict[str, str]) -> str:
     """
-    Build prompt requesting full updated file contents.
-    DeepSeek must NOT emit diffs, markdown, or commentary.
+    Build prompt using Alpaca-style format that DeepSeek follows well.
+    For multiple files, we process each one with a clear FILE: marker.
     """
-    files_section = ""
-    for filename, content in files.items():
-        files_section += f"FILE: {filename}\n{content}\n\n"
+    files_section = "\n\n".join(f"FILE: {f}\n{c}" for f, c in files.items())
 
-    return f"""You are a code transformation engine.
+    return f"""### Instruction:
+Apply the following task to the provided files. Output ONLY the complete modified file contents.
+Use this exact format for each file you modify:
 
-TASK:
-Apply the following EXECUTION BRIEF to the provided files.
+FILE: <path>
+<complete file contents>
 
-STRICT OUTPUT RULES (MANDATORY):
-- Output ONLY the full updated contents of each modified file.
-- Use this EXACT format for each file:
+Do not include explanations, markdown, or any other text.
 
-FILE: <relative/path/filename>
-<full updated file contents>
-
-- One FILE block per modified file.
-- Do NOT include markdown.
-- Do NOT include code blocks.
-- Do NOT include explanations.
-- Do NOT include commentary.
-- Do NOT include diffs.
-- Output ONLY the FILE blocks with updated contents.
-
-If a file is not modified, do NOT include it in output.
-
-EXECUTION BRIEF:
+### Task:
 {brief}
 
-FILES:
-{files_section}"""
+### Input Files:
+{files_section}
+
+### Response:
+"""
+
+
+def _extract_code_from_markdown(content: str) -> str:
+    """Extract code from markdown code blocks if present."""
+    # Match ```python or ``` followed by code and ending with ```
+    pattern = r'```(?:python)?\s*\n(.*?)```'
+    match = re.search(pattern, content, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+
+    # Remove any trailing markdown artifacts
+    content = re.sub(r'\n*```(?:python)?$', '', content)
+    return content
 
 
 def _parse_file_blocks(output: str, allowed_files: set) -> Dict[str, str]:
     """
     Parse DeepSeek output into {filename: content} dict.
-    Validates against allowed_files set and detects duplicates.
+    Validates against allowed_files set and handles markdown code blocks.
 
     Expected format:
     FILE: path/to/file.py
-    <file contents>
+    <file contents>  OR  ```python\n<file contents>\n```
 
-    FILE: path/to/other.py
-    <file contents>
-
-    Raises ExecutionError if:
-    - A FILE: block references an unknown file (hallucination guard)
-    - Duplicate FILE: blocks for the same file are detected
+    Only takes the FIRST occurrence of each file (ignores duplicates).
+    Raises ExecutionError if unknown file is referenced.
     """
     result = {}
     seen_files = set()
@@ -141,12 +140,10 @@ def _parse_file_blocks(output: str, allowed_files: set) -> Dict[str, str]:
             i += 2
             continue
 
-        # GUARDRAIL: Check for duplicate FILE blocks
+        # Skip duplicates (take first occurrence only)
         if filename in seen_files:
-            raise ExecutionError(
-                f"Duplicate FILE block detected for '{filename}'. "
-                "Each file may only appear once in DeepSeek output."
-            )
+            i += 2
+            continue
         seen_files.add(filename)
 
         # GUARDRAIL: Check if file is in allowed set (hallucination guard)
@@ -157,11 +154,13 @@ def _parse_file_blocks(output: str, allowed_files: set) -> Dict[str, str]:
                 "New file creation is not permitted unless explicitly allowed."
             )
 
-        # Clean up content: remove leading/trailing whitespace but preserve internal structure
-        # Remove only the first newline after filename and trailing whitespace
+        # Extract code from markdown blocks if present
+        content = _extract_code_from_markdown(content)
+
+        # Clean up content
         content = content.strip('\n')
         if content.endswith('\n\n'):
-            content = content[:-1]  # Remove one trailing newline
+            content = content[:-1]
 
         result[filename] = content
 
