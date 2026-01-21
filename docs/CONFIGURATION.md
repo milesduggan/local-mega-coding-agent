@@ -30,6 +30,13 @@ Set these before starting VS Code or in your shell profile.
 | `AI_AGENT_LLAMA_NORMALIZE_TEMPERATURE` | 0.2 | Normalization creativity |
 | `AI_AGENT_LLAMA_N_THREADS` | 4 | CPU threads for inference |
 
+### Model Paths
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AI_AGENT_LLAMA_MODEL_PATH` | `models/llama/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf` | Path to LLaMA model file |
+| `AI_AGENT_DEEPSEEK_MODEL_PATH` | `models/deepseek/deepseek-coder-6.7b-instruct.Q4_K_M.gguf` | Path to DeepSeek model file |
+
 ### Model Lifecycle
 
 | Variable | Default | Description |
@@ -161,6 +168,14 @@ Check the Output panel in VS Code (select "AI Agent" from dropdown).
 {
   "ai-agent.pythonPath": "/usr/local/bin/python3.11"
 }
+```
+
+### Custom Model Location
+
+```bash
+# Use models stored elsewhere
+export AI_AGENT_LLAMA_MODEL_PATH="/path/to/your/llama-model.gguf"
+export AI_AGENT_DEEPSEEK_MODEL_PATH="/path/to/your/deepseek-model.gguf"
 ```
 
 ---
