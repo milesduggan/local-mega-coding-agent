@@ -1,0 +1,9 @@
+# Local AI Agent - Python Dependencies
+#
+# Install with: pip install -r requirements.txt
+
+# LLM inference engine
+llama-cpp-python>=0.2.0
+
+# Testing
+pytest>=7.0.0
