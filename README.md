@@ -9,7 +9,7 @@
 ## Features
 
 - **100% Offline** - No API keys, no cloud services, your code never leaves your machine
-- **Dual-Model Architecture** - LLaMA 3.1 8B for chat/review + DeepSeek Coder 6.7B for code generation
+- **Single-Model Architecture** - Qwen2.5-Coder 7B-Instruct for all roles (chat, code, review)
 - **Critic-Executor-Review Workflow** - Safer code changes with built-in validation
 - **Smart Chunking** - 50-75% token savings on Python files via AST-based chunking
 - **Tool System** - Extensible tools for bash commands, file operations, and codebase search
@@ -38,7 +38,7 @@
    ```bash
    python setup_models.py
    ```
-   This downloads LLaMA 3.1 8B and DeepSeek Coder 6.7B (~8GB total).
+   This downloads Qwen2.5-Coder-7B-Instruct-Q4_K_M (~4.5GB).
 
 3. **Install Python dependencies**
    ```bash
@@ -76,16 +76,17 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-The dual-model approach uses each model's strengths:
-- **LLaMA 3.1 8B** excels at conversation and reasoning
-- **DeepSeek Coder 6.7B** excels at code generation with predictable output format
+Qwen2.5-Coder 7B-Instruct runs all three roles with different temperature settings:
+- **Chat/clarify** — temperature 0.7 for natural conversation
+- **Code generation** — temperature 0.2 for deterministic output
+- **Review** — temperature 0.3 for conservative correctness judgments
 
 ## Requirements
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| RAM | 16GB | 32GB |
-| Disk | 8GB (models) | 10GB |
+| RAM | 8GB | 16GB |
+| Disk | 5GB (model) | 6GB |
 | Python | 3.10 | 3.11+ |
 | VS Code | 1.85 | Latest |
 | Node.js | 18+ | 20+ |
@@ -171,7 +172,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 ### Models fail to load
 - Ensure models exist in `models/` directory
 - Run `python setup_models.py` to download
-- Check you have ~8GB free disk space
+- Check you have ~5GB free disk space
 
 ### Slow first response
 - Models warm up on extension activation (10-20s)
@@ -184,7 +185,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 - Consider using a machine with 32GB RAM
 
 ### Code generation returns garbage
-- Ensure DeepSeek model is the correct version
+- Ensure the model is the correct version
 - Check Python backend logs in Output panel
 - Try simplifying your task description
 
@@ -196,5 +197,4 @@ MIT - see [LICENSE](LICENSE)
 
 - [llama.cpp](https://github.com/ggerganov/llama.cpp) - Fast inference engine
 - [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) - Python bindings
-- [Meta LLaMA](https://llama.meta.com/) - Base language model
-- [DeepSeek](https://www.deepseek.com/) - Code-specialized model
+- [Qwen](https://qwen.readthedocs.io/) - Qwen2.5-Coder code-specialized model
