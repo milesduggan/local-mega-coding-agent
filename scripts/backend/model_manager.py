@@ -111,7 +111,7 @@ class ModelManager:
         Does not load the model - it will be loaded lazily on first access.
 
         Args:
-            model_type: Type of model (CRITIC or EXECUTOR)
+            model_type: Type of model (e.g. ModelType.MAIN)
             model_path: Path to the model file
             config: Configuration dict (n_ctx, n_threads, etc.)
             loader: Callable that returns a loaded model instance
