@@ -30,7 +30,7 @@
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/milesduggan/local-ai-agent.git
+   git clone https://github.com/milesduggan/local-ai-agent.git  # update with your fork URL
    cd local-ai-agent
    ```
 
