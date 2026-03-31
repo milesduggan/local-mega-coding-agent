@@ -12,16 +12,13 @@ sys.path.insert(0, _PROJECT_ROOT)
 from scripts.memory.context_manager import ContextManager
 from scripts.backend.model_manager import get_manager, ModelType
 from scripts.config import (
-    LLAMA_N_CTX, LLAMA_N_THREADS,
-    LLAMA_CHAT_MAX_TOKENS, LLAMA_CHAT_TEMPERATURE,
-    LLAMA_REVIEW_MAX_TOKENS, LLAMA_REVIEW_TEMPERATURE,
-    LLAMA_NORMALIZE_MAX_TOKENS, LLAMA_NORMALIZE_TEMPERATURE,
-    LLAMA_MODEL_PATH,
+    MODEL_N_CTX, MODEL_N_THREADS, MODEL_PATH,
+    MODEL_CHAT_MAX_TOKENS, MODEL_CHAT_TEMPERATURE,
+    MODEL_REVIEW_MAX_TOKENS, MODEL_REVIEW_TEMPERATURE,
+    MODEL_NORMALIZE_MAX_TOKENS, MODEL_NORMALIZE_TEMPERATURE,
 )
 
 log = logging.getLogger(__name__)
-
-MODEL_PATH = LLAMA_MODEL_PATH  # Use centralized config
 STORAGE_DIR = os.path.join(_PROJECT_ROOT, ".ai-agent-memory")
 
 HANDOFF_PHRASE = "Proceed with implementation."
@@ -37,19 +34,19 @@ _manager = get_manager()
 
 
 def _create_llm() -> Llama:
-    """Factory function to create LLaMA model instance."""
+    """Factory function to create the model instance."""
     return Llama(
         model_path=MODEL_PATH,
-        n_ctx=LLAMA_N_CTX,
-        n_threads=LLAMA_N_THREADS,
+        n_ctx=MODEL_N_CTX,
+        n_threads=MODEL_N_THREADS,
         verbose=False,
     )
 
 
 _manager.register_model(
-    ModelType.CRITIC,
+    ModelType.MAIN,
     MODEL_PATH,
-    {"n_ctx": LLAMA_N_CTX, "n_threads": LLAMA_N_THREADS},
+    {"n_ctx": MODEL_N_CTX, "n_threads": MODEL_N_THREADS},
     _create_llm
 )
 
@@ -88,8 +85,8 @@ def _extract_response_text(response: dict) -> str:
 
 
 def _get_llm() -> Llama:
-    """Get the critic model via ModelManager (lazy loading, access tracking)."""
-    return _manager.get_model(ModelType.CRITIC)
+    """Get the model via ModelManager (lazy loading, access tracking)."""
+    return _manager.get_model(ModelType.MAIN)
 
 
 def _get_context_manager() -> ContextManager:
@@ -117,16 +114,11 @@ def warm_up() -> bool:
 
 
 def unload() -> bool:
-    """
-    Unload the critic model to free memory.
-    Returns True if model was unloaded, False if not loaded.
-    """
-    return _manager.unload_model(ModelType.CRITIC)
+    return _manager.unload_model(ModelType.MAIN)
 
 
 def is_loaded() -> bool:
-    """Check if critic model is currently loaded."""
-    return _manager.is_loaded(ModelType.CRITIC)
+    return _manager.is_loaded(ModelType.MAIN)
 
 
 def chat(user_message: str, history: Optional[History] = None) -> str:
@@ -158,8 +150,8 @@ def chat(user_message: str, history: Optional[History] = None) -> str:
     llm = _get_llm()
     response = llm.create_chat_completion(
         messages=messages,
-        max_tokens=LLAMA_CHAT_MAX_TOKENS,
-        temperature=LLAMA_CHAT_TEMPERATURE,
+        max_tokens=MODEL_CHAT_MAX_TOKENS,
+        temperature=MODEL_CHAT_TEMPERATURE,
         top_p=0.9,
     )
 
@@ -192,8 +184,8 @@ def review_diff(task: str, diff: str) -> str:
     llm = _get_llm()
     response = llm.create_chat_completion(
         messages=messages,
-        max_tokens=LLAMA_REVIEW_MAX_TOKENS,
-        temperature=LLAMA_REVIEW_TEMPERATURE,
+        max_tokens=MODEL_REVIEW_MAX_TOKENS,
+        temperature=MODEL_REVIEW_TEMPERATURE,
     )
 
     return _extract_response_text(response)
@@ -278,8 +270,23 @@ If you cannot determine the task clearly, output ONLY a clarification question s
     llm = _get_llm()
     response = llm.create_chat_completion(
         messages=messages,
-        max_tokens=LLAMA_NORMALIZE_MAX_TOKENS,
-        temperature=LLAMA_NORMALIZE_TEMPERATURE,
+        max_tokens=MODEL_NORMALIZE_MAX_TOKENS,
+        temperature=MODEL_NORMALIZE_TEMPERATURE,
     )
 
+    return _extract_response_text(response)
+
+
+def chat_for_turn(messages: list) -> str:
+    """
+    Chat completion for TurnRunner — takes a messages list, returns response string.
+    Uses turn temperature for tool-call decision making.
+    """
+    from scripts.config import MODEL_TURN_MAX_TOKENS, MODEL_TURN_TEMPERATURE
+    llm = _get_llm()
+    response = llm.create_chat_completion(
+        messages=messages,
+        max_tokens=MODEL_TURN_MAX_TOKENS,
+        temperature=MODEL_TURN_TEMPERATURE,
+    )
     return _extract_response_text(response)

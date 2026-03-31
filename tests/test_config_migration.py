@@ -54,3 +54,12 @@ def test_executor_uses_model_config():
     assert "ModelType.MAIN" in src
     assert "DEEPSEEK_" not in src
     assert "ModelType.EXECUTOR" not in src
+
+def test_critic_uses_model_config():
+    import inspect, scripts.critic.critic as c
+    src = inspect.getsource(c)
+    assert "MODEL_PATH" in src
+    assert "MODEL_N_CTX" in src
+    assert "ModelType.MAIN" in src
+    assert "LLAMA_" not in src
+    assert "ModelType.CRITIC" not in src
