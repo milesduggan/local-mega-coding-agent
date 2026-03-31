@@ -20,10 +20,6 @@ _TOOL_CALL_RE = re.compile(
     re.DOTALL
 )
 
-# Sentinel returned by _call_model_with_timeout when the model call timed out.
-_TIMEOUT_SENTINEL = None
-
-
 @dataclass
 class TurnResult:
     stop_reason: str
@@ -48,6 +44,7 @@ class TurnRunner:
         self._router = Router()
         self._pending_tool: Optional[Dict[str, Any]] = None
         self._pending_conversation: Optional[List[Dict]] = None
+        self._turns_used: int = 0
 
     def run(self, user_input: str, files: Dict[str, str]) -> TurnResult:
         routing = self._router.score(user_input)
@@ -55,8 +52,11 @@ class TurnRunner:
         conversation = self._build_messages(user_input, files, ctx)
         return self._run_loop(conversation)
 
-    def _run_loop(self, conversation: List[Dict]) -> TurnResult:
-        for _turn in range(self.max_turns):
+    def _run_loop(self, conversation: List[Dict], remaining_turns: Optional[int] = None) -> TurnResult:
+        if remaining_turns is None:
+            remaining_turns = self.max_turns
+        for _turn in range(remaining_turns):
+            self._turns_used += 1
             response, err = self._call_model_with_timeout(conversation)
 
             if err:
@@ -68,8 +68,9 @@ class TurnRunner:
                     error=err,
                 )
 
-            # Timeout: response is None (sentinel). Log and continue to next turn.
-            if response is _TIMEOUT_SENTINEL:
+            # Timeout: _call_model_with_timeout returns None as response on timeout.
+            # (It returns None rather than a value because the thread is still running.)
+            if response is None:
                 self._history.add("Turn timeout", "Model call exceeded timeout; retrying")
                 conversation.append({
                     "role": "user",
@@ -101,6 +102,10 @@ class TurnRunner:
                 try:
                     params = json.loads(params_str)
                 except json.JSONDecodeError:
+                    self._history.add(
+                        "Parse warning",
+                        f"Could not parse params for {tool_name}, using empty dict",
+                    )
                     params = {}
 
                 registry = get_registry()
@@ -201,7 +206,8 @@ class TurnRunner:
 
         self._pending_tool = None
         self._pending_conversation = None
-        return self._run_loop(conversation)
+        remaining = max(0, self.max_turns - self._turns_used)
+        return self._run_loop(conversation, remaining_turns=remaining)
 
     def _call_model_with_timeout(self, conversation: List[Dict]) -> tuple:
         result_holder: List[Optional[str]] = [None]
@@ -217,14 +223,16 @@ class TurnRunner:
             except Exception as exc:
                 error_holder[0] = f"{type(exc).__name__}: {exc}"
 
+        # Thread cannot be cancelled — daemon=True ensures it won't block process exit,
+        # but it may outlive this call if the model is slow.
         thread = threading.Thread(target=call, daemon=True)
         thread.start()
         timeout_s = TIMEOUT_EXECUTE_MS / 1000
         thread.join(timeout=timeout_s)
 
         if thread.is_alive():
-            # Return the sentinel (None) to signal a timeout to the caller.
-            return _TIMEOUT_SENTINEL, None
+            # Return None to signal a timeout to the caller.
+            return None, None
 
         if error_holder[0] is not None:
             return None, error_holder[0]
