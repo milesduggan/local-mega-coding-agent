@@ -818,11 +818,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       container.appendChild(details);
     }
 
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     function showApprovalUI(pendingTool) {
       const container = document.getElementById("approval-container");
       if (!container) return;
       container.style.display = "block";
-      container.innerHTML = "<p>Agent wants to run: <strong>" + pendingTool.name + "</strong></p>" +
+      container.innerHTML = "<p>Agent wants to run: <strong>" + escapeHtml(pendingTool.name) + "</strong></p>" +
         "<pre>" + JSON.stringify(pendingTool.params, null, 2) + "</pre>" +
         "<button id=\\"approve-btn\\">Approve</button> <button id=\\"reject-btn\\">Reject</button>";
       document.getElementById("approve-btn").addEventListener("click", function() {
