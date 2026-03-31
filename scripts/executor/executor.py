@@ -78,7 +78,7 @@ except Exception:
     pass  # Already registered by critic.py — same singleton
 
 
-def _get_deepseek() -> Llama:
+def _get_model() -> Llama:
     """Get the model via ModelManager (lazy loading, access tracking)."""
     return _manager.get_model(ModelType.MAIN)
 
@@ -113,9 +113,9 @@ def is_loaded() -> bool:
     return _manager.is_loaded(ModelType.MAIN)
 
 
-def _call_deepseek(prompt: str) -> str:
-    """Call DeepSeek model using raw completion with Alpaca-style format."""
-    llm = _get_deepseek()
+def _call_model(prompt: str) -> str:
+    """Call model using raw completion with Alpaca-style format."""
+    llm = _get_model()
     response = llm(
         prompt,
         max_tokens=MODEL_CODE_MAX_TOKENS,
@@ -127,15 +127,15 @@ def _call_deepseek(prompt: str) -> str:
 
     # Validate response structure before accessing
     if not response or not isinstance(response, dict):
-        raise ExecutionError("DeepSeek returned invalid response structure")
+        raise ExecutionError("model returned invalid response structure")
 
     choices = response.get("choices")
     if not choices or not isinstance(choices, list) or len(choices) == 0:
-        raise ExecutionError("DeepSeek returned no choices in response")
+        raise ExecutionError("model returned no choices in response")
 
     first_choice = choices[0]
     if not isinstance(first_choice, dict) or "text" not in first_choice:
-        raise ExecutionError("DeepSeek response missing 'text' field")
+        raise ExecutionError("model response missing 'text' field")
 
     text = first_choice["text"].strip()
     return text.encode("utf-8", errors="replace").decode("utf-8")
@@ -143,7 +143,7 @@ def _call_deepseek(prompt: str) -> str:
 
 def _build_prompt(brief: str, files: Dict[str, str]) -> str:
     """
-    Build prompt using Alpaca-style format that DeepSeek follows well.
+    Build prompt using Alpaca-style format that the model follows well.
     For multiple files, we process each one with a clear FILE: marker.
     """
     files_section = "\n\n".join(f"FILE: {f}\n{c}" for f, c in files.items())
@@ -211,7 +211,7 @@ def _extract_code_from_markdown(content: str) -> str:
 
 def _parse_file_blocks(output: str, allowed_files: set) -> Dict[str, str]:
     """
-    Parse DeepSeek output into {filename: content} dict.
+    Parse model output into {filename: content} dict.
     Validates against allowed_files set and handles markdown code blocks.
 
     Expected format:
@@ -265,7 +265,7 @@ def _parse_file_blocks(output: str, allowed_files: set) -> Dict[str, str]:
         # GUARDRAIL: Check if file is in allowed set (hallucination guard)
         if filename not in allowed_files:
             raise ExecutionError(
-                f"DeepSeek referenced unknown file '{filename}'. "
+                f"model referenced unknown file '{filename}'. "
                 f"Allowed files: {sorted(allowed_files)}. "
                 "New file creation is not permitted unless explicitly allowed."
             )
@@ -362,12 +362,12 @@ def _execute_chunked(task: str, filename: str, content: str) -> Optional[str]:
             f"~{savings:.0f}% token savings"
         )
 
-        # Build chunk prompt and call DeepSeek
+        # Build chunk prompt and call model
         prompt = _build_chunk_prompt(task, filename, relevant_chunks)
-        raw_output = _call_deepseek(prompt)
+        raw_output = _call_model(prompt)
 
         if not raw_output:
-            log.warning("DeepSeek returned empty output for chunk-based execution")
+            log.warning("model returned empty output for chunk-based execution")
             return None
 
         # Reconstruct file from chunk output
@@ -442,10 +442,10 @@ def execute(task: str, files: Dict[str, str]) -> str:
     # Full-file execution for remaining files
     if files_needing_full_execution:
         prompt = _build_prompt(task, files_needing_full_execution)
-        raw_output = _call_deepseek(prompt)
+        raw_output = _call_model(prompt)
 
         if not raw_output:
-            raise ExecutionError("DeepSeek returned empty output for full-file execution.")
+            raise ExecutionError("model returned empty output for full-file execution.")
 
         # Build allowed files set from files needing full execution
         allowed_files = set(files_needing_full_execution.keys())
@@ -467,7 +467,7 @@ def execute(task: str, files: Dict[str, str]) -> str:
 
         if not full_file_updates:
             raise ExecutionError(
-                "DeepSeek produced zero valid FILE blocks. "
+                "model produced zero valid FILE blocks. "
                 "Expected format: FILE: <filename>\\n<contents>. "
                 "Execution cannot proceed without file output."
             )

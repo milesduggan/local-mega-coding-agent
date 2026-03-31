@@ -16,6 +16,7 @@ from scripts.config import (
     MODEL_CHAT_MAX_TOKENS, MODEL_CHAT_TEMPERATURE,
     MODEL_REVIEW_MAX_TOKENS, MODEL_REVIEW_TEMPERATURE,
     MODEL_NORMALIZE_MAX_TOKENS, MODEL_NORMALIZE_TEMPERATURE,
+    MODEL_TURN_MAX_TOKENS, MODEL_TURN_TEMPERATURE,
 )
 
 log = logging.getLogger(__name__)
@@ -282,7 +283,6 @@ def chat_for_turn(messages: list) -> str:
     Chat completion for TurnRunner — takes a messages list, returns response string.
     Uses turn temperature for tool-call decision making.
     """
-    from scripts.config import MODEL_TURN_MAX_TOKENS, MODEL_TURN_TEMPERATURE
     llm = _get_llm()
     response = llm.create_chat_completion(
         messages=messages,
