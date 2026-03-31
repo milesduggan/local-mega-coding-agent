@@ -29,8 +29,10 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(_MODULE_DIR))
 sys.path.insert(0, _PROJECT_ROOT)
 
 from scripts.critic.critic import chat, review_diff, normalize_task, History
+from scripts.critic.critic import chat_for_turn
 from scripts.critic.critic import warm_up as warm_up_critic
 from scripts.critic.critic import unload as unload_critic
+from scripts.agent.turn_runner import TurnRunner
 from scripts.executor.executor import execute
 from scripts.executor.executor import warm_up as warm_up_executor
 from scripts.executor.executor import unload as unload_executor
@@ -276,6 +278,43 @@ def handle_execute_tool(params: dict) -> dict:
     return result.to_dict()
 
 
+def handle_agent_turn(params: dict) -> dict:
+    """
+    Run one agentic turn (or resume after approval).
+
+    Params:
+      - user_input: str — the user's task description
+      - files: dict[str, str] — filename → content map
+      - resume: bool (optional, default False) — if True, resume after approval
+      - tool_name: str (optional) — tool to resume with (used when resume=True)
+      - tool_params: dict (optional) — params for resumed tool
+      - approved: bool (optional) — whether user approved the tool (used when resume=True)
+
+    Returns TurnResult as a dict.
+    """
+    user_input = params.get("user_input", "")
+    files = params.get("files", {})
+
+    runner = TurnRunner(model_call=chat_for_turn)
+
+    if params.get("resume", False):
+        tool_name = params.get("tool_name", "")
+        tool_params = params.get("tool_params", {})
+        approved = params.get("approved", False)
+        result = runner.resume(tool_name, tool_params, approved)
+    else:
+        result = runner.run(user_input, files)
+
+    return {
+        "stop_reason": result.stop_reason,
+        "mode": result.mode,
+        "transcript": result.transcript,
+        "context_summary": result.context_summary,
+        "pending_tool": result.pending_tool,
+        "error": result.error,
+    }
+
+
 def handle_message(msg: dict) -> None:
     """Route a JSON-RPC message to the appropriate handler."""
     msg_id = msg.get("id")
@@ -332,6 +371,10 @@ def handle_message(msg: dict) -> None:
 
         elif method == "execute_tool":
             result = handle_execute_tool(params)
+            send_response(msg_id, result=result)
+
+        elif method == "agent_turn":
+            result = handle_agent_turn(params)
             send_response(msg_id, result=result)
 
         else:
