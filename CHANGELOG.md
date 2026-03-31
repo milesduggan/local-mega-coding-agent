@@ -24,6 +24,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - model_manager.py: ModelType.MAIN replaces ModelType.CRITIC and ModelType.EXECUTOR
 - setup_models.py: downloads Qwen2.5-Coder-7B-Instruct-Q4_K_M only
 
+### Removed
+- `scripts/executor/deepseek_executor.py` — stale DeepSeek-specific executor
+- `scripts/agent/llama_wrapper.py` — stale LLaMA wrapper
+- `tests/test_deepseek.py`, `tests/test_llama.py` — model-specific tests no longer applicable
+
 ### Stop Reasons
 - `done`: agent completed successfully
 - `max_turns_reached`: hit MAX_AGENT_TURNS (default: 10) without finishing

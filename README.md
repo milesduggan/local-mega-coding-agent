@@ -13,7 +13,8 @@
 - **Critic-Executor-Review Workflow** - Safer code changes with built-in validation
 - **Smart Chunking** - 50-75% token savings on Python files via AST-based chunking
 - **Tool System** - Extensible tools for bash commands, file operations, and codebase search
-- **Auto Memory Management** - Automatically unloads idle models to free ~8-10GB RAM
+- **Agentic Loop** - Multi-turn tool use: agent reads files, searches code, then generates a diff
+- **Auto Memory Management** - Automatically unloads idle models to free ~4-5GB RAM
 - **Security Hardened** - Path traversal protection and input validation
 - **Configurable** - Tune timeouts, model parameters, and behavior via settings
 
@@ -137,8 +138,13 @@ local-ai-agent/
 │   │   ├── wrapper.py          # JSON-RPC router
 │   │   └── model_manager.py    # Model lifecycle management
 │   ├── chunker/                # AST-based Python chunking
-│   ├── critic/                 # LLaMA interface
-│   ├── executor/               # DeepSeek interface
+│   ├── agent/                  # Agentic loop
+│   │   ├── turn_runner.py      # Multi-turn loop with tool dispatch
+│   │   ├── router.py           # Scores tools against user input
+│   │   ├── context.py          # Session context for system prompt
+│   │   └── history.py          # Per-turn transcript log
+│   ├── critic/                 # Chat and review interface (Qwen)
+│   ├── executor/               # Code generation interface (Qwen)
 │   ├── memory/                 # Session persistence
 │   ├── tools/                  # Extensible tool system
 │   │   ├── bash.py             # Shell command execution
@@ -157,7 +163,9 @@ local-ai-agent/
 │   └── TOOLS.md                # Tool system reference
 ├── tests/
 │   ├── test_executor.py        # Executor security tests
-│   └── test_tools.py           # Tool system tests (52 tests)
+│   ├── test_tools.py           # Tool system tests
+│   ├── test_turn_runner.py     # Agentic loop tests
+│   └── test_tool_registry_parity.py  # Tool registry audit (123 tests total)
 ├── setup_models.py             # Model download script
 └── README.md
 ```
