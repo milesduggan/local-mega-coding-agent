@@ -7,6 +7,15 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface AgentTurnResult {
+  stop_reason: "done" | "max_turns_reached" | "approval_required" | "error";
+  mode: string;
+  transcript: Array<{ title: string; detail: string }>;
+  context_summary: string;
+  pending_tool: { name: string; params: Record<string, unknown> } | null;
+  error: string | null;
+}
+
 export class PythonBackend {
   private proc: ChildProcess;
   private buffer = "";
@@ -187,6 +196,17 @@ export class PythonBackend {
     config: { idle_timeout_minutes: number; auto_unload_enabled: boolean };
   }> {
     return this.call("model_status", {}, 5000);  // 5s timeout
+  }
+
+  async agentTurn(params: {
+    user_input: string;
+    files: Record<string, string>;
+    resume?: boolean;
+    tool_name?: string;
+    tool_params?: Record<string, unknown>;
+    approved?: boolean;
+  }): Promise<AgentTurnResult> {
+    return this.call("agent_turn", params as unknown as Record<string, unknown>);
   }
 
   // Legacy method for backwards compatibility

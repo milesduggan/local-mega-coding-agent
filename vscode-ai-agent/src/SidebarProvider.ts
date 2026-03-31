@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { PythonBackend, ChatMessage } from "./pythonBackend";
+import { PythonBackend, ChatMessage, AgentTurnResult } from "./pythonBackend";
 
 type FlowState = "chatting" | "executing" | "reviewing" | "applying";
 
@@ -152,6 +152,30 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case "clearFiles":
           this.clearFiles();
           break;
+        case "agentProceed": {
+          await this.handleAgentProceed(msg.userInput, msg.files ?? {});
+          break;
+        }
+        case "approveToolCall": {
+          const { toolName, toolParams, approved } = msg;
+          try {
+            const result = await this.backend.agentTurn({
+              user_input: "",
+              files: {},
+              resume: true,
+              tool_name: toolName,
+              tool_params: toolParams,
+              approved: approved,
+            });
+            this.webviewView?.webview.postMessage({ type: "agentTurnResult", result });
+          } catch (err) {
+            this.webviewView?.webview.postMessage({
+              type: "agentTurnResult",
+              result: { stop_reason: "error", error: String(err), transcript: [], mode: "error", context_summary: "", pending_tool: null } as AgentTurnResult
+            });
+          }
+          break;
+        }
       }
     });
 
@@ -282,6 +306,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       for (const uri of uris) {
         this.addFile(uri);
       }
+    }
+  }
+
+  private async handleAgentProceed(userInput: string, files: Record<string, string>): Promise<void> {
+    try {
+      const result = await this.backend.agentTurn({ user_input: userInput, files });
+      this.webviewView?.webview.postMessage({ type: "agentTurnResult", result });
+    } catch (err) {
+      this.webviewView?.webview.postMessage({
+        type: "agentTurnResult",
+        result: { stop_reason: "error", error: String(err), transcript: [], mode: "error", context_summary: "", pending_tool: null } as AgentTurnResult
+      });
     }
   }
 
@@ -690,6 +726,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   ${diffHtml}
 
+  <div id="transcript-container" style="display:none;"></div>
+  <div id="approval-container" style="display:none;"></div>
+  <div id="status-message" style="display:none;"></div>
+
   <script>
     const vscode = acquireVsCodeApi();
 
@@ -734,6 +774,75 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           send();
         }
       });
+    }
+
+    // Handle messages from extension
+    window.addEventListener("message", (event) => {
+      const message = event.data;
+      switch (message.type) {
+        case "agentTurnResult": {
+          const result = message.result;
+          renderTranscript(result.transcript);
+          if (result.stop_reason === "approval_required" && result.pending_tool) {
+            showApprovalUI(result.pending_tool);
+          } else if (result.stop_reason === "done") {
+            hideApprovalUI();
+          } else if (result.stop_reason === "max_turns_reached") {
+            showStatusMessage("Agent reached turn limit — try narrowing your task");
+          } else if (result.stop_reason === "error") {
+            showStatusMessage("Error: " + (result.error || "Unknown error"));
+          }
+          break;
+        }
+      }
+    });
+
+    function renderTranscript(events) {
+      const container = document.getElementById("transcript-container");
+      if (!container) return;
+      if (!events || events.length === 0) {
+        container.style.display = "none";
+        return;
+      }
+      container.style.display = "block";
+      const details = document.createElement("details");
+      details.innerHTML = "<summary>Agent activity (" + events.length + " steps)</summary>";
+      const ul = document.createElement("ul");
+      events.forEach(function(e) {
+        const li = document.createElement("li");
+        li.textContent = e.title + (e.detail ? ": " + e.detail : "");
+        ul.appendChild(li);
+      });
+      details.appendChild(ul);
+      container.innerHTML = "";
+      container.appendChild(details);
+    }
+
+    function showApprovalUI(pendingTool) {
+      const container = document.getElementById("approval-container");
+      if (!container) return;
+      container.style.display = "block";
+      container.innerHTML = "<p>Agent wants to run: <strong>" + pendingTool.name + "</strong></p>" +
+        "<pre>" + JSON.stringify(pendingTool.params, null, 2) + "</pre>" +
+        "<button id=\\"approve-btn\\">Approve</button> <button id=\\"reject-btn\\">Reject</button>";
+      document.getElementById("approve-btn").addEventListener("click", function() {
+        vscode.postMessage({ type: "approveToolCall", toolName: pendingTool.name, toolParams: pendingTool.params, approved: true });
+        container.style.display = "none";
+      });
+      document.getElementById("reject-btn").addEventListener("click", function() {
+        vscode.postMessage({ type: "approveToolCall", toolName: pendingTool.name, toolParams: pendingTool.params, approved: false });
+        container.style.display = "none";
+      });
+    }
+
+    function hideApprovalUI() {
+      const container = document.getElementById("approval-container");
+      if (container) container.style.display = "none";
+    }
+
+    function showStatusMessage(msg) {
+      const el = document.getElementById("status-message");
+      if (el) { el.textContent = msg; el.style.display = "block"; }
     }
   </script>
 </body>
