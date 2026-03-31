@@ -27,9 +27,8 @@ log = logging.getLogger(__name__)
 
 
 class ModelType(Enum):
-    """Types of models managed by the ModelManager."""
-    CRITIC = "critic"      # LLaMA 8B
-    EXECUTOR = "executor"  # DeepSeek 6.7B
+    """Single model type — Qwen2.5-Coder handles all roles."""
+    MAIN = "main"
 
 
 @dataclass

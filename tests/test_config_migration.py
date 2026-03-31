@@ -40,3 +40,9 @@ def test_code_tuning_params_present():
     assert hasattr(config, "MODEL_CODE_REPEAT_PENALTY")
     assert config.MODEL_CODE_TOP_P == 0.9
     assert config.MODEL_CODE_REPEAT_PENALTY == 1.1
+
+def test_model_type_single():
+    from scripts.backend.model_manager import ModelType
+    assert hasattr(ModelType, "MAIN")
+    assert not hasattr(ModelType, "CRITIC")
+    assert not hasattr(ModelType, "EXECUTOR")
