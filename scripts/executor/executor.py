@@ -1,15 +1,15 @@
 """
-Executor module - synthesizes diffs locally from DeepSeek output.
+Executor module - synthesizes diffs locally from model output.
 
 Flow:
 1. Receive task and original files
 2. For Python files: parse into chunks, select relevant ones
-3. Call DeepSeek with chunks (or full file for non-Python)
+3. Call the model with chunks (or full file for non-Python)
 4. Parse output and reconstruct file
 5. Generate unified diffs via difflib
 6. Return combined diff for review gate
 
-DeepSeek never emits diffs. All diff generation is deterministic and local.
+The model never emits diffs. All diff generation is deterministic and local.
 """
 
 import ast
@@ -31,12 +31,12 @@ sys.path.insert(0, _PROJECT_ROOT)
 from scripts.chunker.python_chunker import CodeChunk, parse_python_file
 from scripts.chunker.selector import select_relevant_chunks
 from scripts.chunker.reconstructor import reconstruct_from_llm_output, ReconstructionError
-from scripts.backend.model_manager import get_manager, ModelType
 from scripts.config import (
-    DEEPSEEK_N_CTX, DEEPSEEK_MAX_TOKENS, DEEPSEEK_TEMPERATURE,
-    DEEPSEEK_TOP_P, DEEPSEEK_REPEAT_PENALTY, DEEPSEEK_N_THREADS,
-    DEEPSEEK_MODEL_PATH,
+    MODEL_N_CTX, MODEL_N_THREADS, MODEL_PATH,
+    MODEL_CODE_MAX_TOKENS, MODEL_CODE_TEMPERATURE,
+    MODEL_CODE_TOP_P, MODEL_CODE_REPEAT_PENALTY,
 )
+from scripts.backend.model_manager import get_manager, ModelType
 
 log = logging.getLogger(__name__)
 
@@ -53,63 +53,64 @@ class ExecutionError(Exception):
     pass
 
 
-_DEEPSEEK_MODEL_PATH = DEEPSEEK_MODEL_PATH  # Use centralized config
-
 # Register model with the ModelManager
 _manager = get_manager()
 
 
-def _create_deepseek() -> Llama:
-    """Factory function to create DeepSeek model instance."""
+def _create_model() -> Llama:
+    """Factory function to create the model instance."""
     return Llama(
-        model_path=_DEEPSEEK_MODEL_PATH,
-        n_ctx=DEEPSEEK_N_CTX,
-        n_threads=DEEPSEEK_N_THREADS,
+        model_path=MODEL_PATH,
+        n_ctx=MODEL_N_CTX,
+        n_threads=MODEL_N_THREADS,
         verbose=False,
     )
 
 
-_manager.register_model(
-    ModelType.EXECUTOR,
-    _DEEPSEEK_MODEL_PATH,
-    {"n_ctx": DEEPSEEK_N_CTX, "n_threads": DEEPSEEK_N_THREADS},
-    _create_deepseek
-)
+try:
+    _manager.register_model(
+        ModelType.MAIN,
+        MODEL_PATH,
+        {"n_ctx": MODEL_N_CTX, "n_threads": MODEL_N_THREADS},
+        _create_model
+    )
+except Exception:
+    pass  # Already registered by critic.py — same singleton
 
 
 def _get_deepseek() -> Llama:
-    """Get the executor model via ModelManager (lazy loading, access tracking)."""
-    return _manager.get_model(ModelType.EXECUTOR)
+    """Get the model via ModelManager (lazy loading, access tracking)."""
+    return _manager.get_model(ModelType.MAIN)
 
 
 def warm_up() -> bool:
     """
-    Pre-load the DeepSeek model into memory.
+    Pre-load the model into memory.
     Called during extension activation to eliminate first-request latency.
     Returns True if model loaded successfully.
     """
     try:
-        _get_deepseek()
+        _manager.get_model(ModelType.MAIN)
         return True
     except FileNotFoundError as e:
-        log.error(f"Executor model file not found: {e}")
+        log.error(f"Model file not found: {e}")
         return False
     except Exception as e:
-        log.error(f"Failed to load executor model: {type(e).__name__}: {e}")
+        log.error(f"Failed to load model: {type(e).__name__}: {e}")
         return False
 
 
 def unload() -> bool:
     """
-    Unload the executor model to free memory.
+    Unload the model to free memory.
     Returns True if model was unloaded, False if not loaded.
     """
-    return _manager.unload_model(ModelType.EXECUTOR)
+    return _manager.unload_model(ModelType.MAIN)
 
 
 def is_loaded() -> bool:
-    """Check if executor model is currently loaded."""
-    return _manager.is_loaded(ModelType.EXECUTOR)
+    """Check if the model is currently loaded."""
+    return _manager.is_loaded(ModelType.MAIN)
 
 
 def _call_deepseek(prompt: str) -> str:
@@ -117,10 +118,10 @@ def _call_deepseek(prompt: str) -> str:
     llm = _get_deepseek()
     response = llm(
         prompt,
-        max_tokens=DEEPSEEK_MAX_TOKENS,
-        temperature=DEEPSEEK_TEMPERATURE,
-        top_p=DEEPSEEK_TOP_P,
-        repeat_penalty=DEEPSEEK_REPEAT_PENALTY,
+        max_tokens=MODEL_CODE_MAX_TOKENS,
+        temperature=MODEL_CODE_TEMPERATURE,
+        top_p=MODEL_CODE_TOP_P,
+        repeat_penalty=MODEL_CODE_REPEAT_PENALTY,
         stop=["</s>", "<|EOT|>", "### Instruction", "### Explanation"],
     )
 

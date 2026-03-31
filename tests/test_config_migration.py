@@ -46,3 +46,11 @@ def test_model_type_single():
     assert hasattr(ModelType, "MAIN")
     assert not hasattr(ModelType, "CRITIC")
     assert not hasattr(ModelType, "EXECUTOR")
+
+def test_executor_uses_model_config():
+    import inspect, scripts.executor.executor as e
+    src = inspect.getsource(e)
+    assert "MODEL_PATH" in src
+    assert "ModelType.MAIN" in src
+    assert "DEEPSEEK_" not in src
+    assert "ModelType.EXECUTOR" not in src
