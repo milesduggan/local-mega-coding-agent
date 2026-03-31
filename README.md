@@ -23,8 +23,8 @@
 
 - Python 3.10+
 - VS Code 1.85+
-- 16GB RAM minimum (32GB recommended)
-- ~8GB disk space for models
+- 8GB RAM minimum (16GB recommended)
+- ~5GB disk space for model
 
 ### Installation
 
@@ -69,9 +69,9 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  1. CHAT        →  LLaMA clarifies your intent              │
-│  2. EXECUTE     →  DeepSeek generates code changes          │
-│  3. REVIEW      →  LLaMA validates the diff                 │
+│  1. CHAT        →  Qwen clarifies your intent               │
+│  2. EXECUTE     →  Qwen generates code changes              │
+│  3. REVIEW      →  Qwen validates the diff                  │
 │  4. APPLY       →  Changes written after syntax validation  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -112,7 +112,7 @@ export AI_AGENT_AUTO_UNLOAD_ENABLED=false
 
 **Increase max output tokens:**
 ```bash
-export AI_AGENT_DEEPSEEK_MAX_TOKENS=2048
+export AI_AGENT_MODEL_CODE_MAX_TOKENS=2048
 ```
 
 ## Commands
@@ -131,8 +131,7 @@ export AI_AGENT_DEEPSEEK_MAX_TOKENS=2048
 ```
 local-ai-agent/
 ├── models/                     # GGUF model files (gitignored)
-│   ├── llama/
-│   └── deepseek/
+│   └── qwen/
 ├── scripts/
 │   ├── backend/
 │   │   ├── wrapper.py          # JSON-RPC router
