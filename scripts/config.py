@@ -8,6 +8,7 @@ import os
 
 
 def _get_int(name: str, default: int) -> int:
+    """Get integer config value from environment or use default."""
     value = os.environ.get(name)
     if value is None:
         return default
@@ -18,6 +19,7 @@ def _get_int(name: str, default: int) -> int:
 
 
 def _get_float(name: str, default: float) -> float:
+    """Get float config value from environment or use default."""
     value = os.environ.get(name)
     if value is None:
         return default
@@ -51,6 +53,12 @@ MODEL_CHAT_TEMPERATURE = _get_float("AI_AGENT_MODEL_CHAT_TEMPERATURE", 0.7)
 # Code generation role — low temperature for determinism
 MODEL_CODE_MAX_TOKENS = _get_int("AI_AGENT_MODEL_CODE_MAX_TOKENS", 1024)
 MODEL_CODE_TEMPERATURE = _get_float("AI_AGENT_MODEL_CODE_TEMPERATURE", 0.2)
+
+# Nucleus sampling for code generation
+MODEL_CODE_TOP_P = _get_float("AI_AGENT_MODEL_CODE_TOP_P", 0.9)
+
+# Penalize token repetition — prevents code repetition loops
+MODEL_CODE_REPEAT_PENALTY = _get_float("AI_AGENT_MODEL_CODE_REPEAT_PENALTY", 1.1)
 
 # Review role — conservative for correctness judgments
 MODEL_REVIEW_MAX_TOKENS = _get_int("AI_AGENT_MODEL_REVIEW_MAX_TOKENS", 256)

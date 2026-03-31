@@ -18,11 +18,25 @@ def test_model_config_exists():
 
 def test_old_config_gone():
     from scripts import config
-    assert not hasattr(config, "DEEPSEEK_N_CTX")
-    assert not hasattr(config, "LLAMA_N_CTX")
-    assert not hasattr(config, "DEEPSEEK_MODEL_PATH")
-    assert not hasattr(config, "LLAMA_MODEL_PATH")
+    old_names = [
+        "DEEPSEEK_N_CTX", "DEEPSEEK_MAX_TOKENS", "DEEPSEEK_TEMPERATURE",
+        "DEEPSEEK_TOP_P", "DEEPSEEK_REPEAT_PENALTY", "DEEPSEEK_N_THREADS",
+        "DEEPSEEK_MODEL_PATH",
+        "LLAMA_N_CTX", "LLAMA_N_THREADS", "LLAMA_CHAT_MAX_TOKENS",
+        "LLAMA_CHAT_TEMPERATURE", "LLAMA_REVIEW_MAX_TOKENS",
+        "LLAMA_REVIEW_TEMPERATURE", "LLAMA_NORMALIZE_MAX_TOKENS",
+        "LLAMA_NORMALIZE_TEMPERATURE", "LLAMA_MODEL_PATH",
+    ]
+    for name in old_names:
+        assert not hasattr(config, name), f"Old config name still present: {name}"
 
 def test_max_agent_turns_default():
     from scripts import config
     assert config.MAX_AGENT_TURNS == 10
+
+def test_code_tuning_params_present():
+    from scripts import config
+    assert hasattr(config, "MODEL_CODE_TOP_P")
+    assert hasattr(config, "MODEL_CODE_REPEAT_PENALTY")
+    assert config.MODEL_CODE_TOP_P == 0.9
+    assert config.MODEL_CODE_REPEAT_PENALTY == 1.1
