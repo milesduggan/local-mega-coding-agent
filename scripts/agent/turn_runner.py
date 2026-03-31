@@ -20,6 +20,9 @@ _TOOL_CALL_RE = re.compile(
     re.DOTALL
 )
 
+# Sentinel returned by _call_model_with_timeout when the model call timed out.
+_TIMEOUT_SENTINEL = None
+
 
 @dataclass
 class TurnResult:
@@ -43,12 +46,16 @@ class TurnRunner:
         self.max_turns = max_turns if max_turns is not None else MAX_AGENT_TURNS
         self._history = HistoryLog()
         self._router = Router()
+        self._pending_tool: Optional[Dict[str, Any]] = None
+        self._pending_conversation: Optional[List[Dict]] = None
 
     def run(self, user_input: str, files: Dict[str, str]) -> TurnResult:
         routing = self._router.score(user_input)
         ctx = build_session_context(self.snapshot_text, routing)
         conversation = self._build_messages(user_input, files, ctx)
+        return self._run_loop(conversation)
 
+    def _run_loop(self, conversation: List[Dict]) -> TurnResult:
         for _turn in range(self.max_turns):
             response, err = self._call_model_with_timeout(conversation)
 
@@ -60,6 +67,15 @@ class TurnRunner:
                     context_summary="",
                     error=err,
                 )
+
+            # Timeout: response is None (sentinel). Log and continue to next turn.
+            if response is _TIMEOUT_SENTINEL:
+                self._history.add("Turn timeout", "Model call exceeded timeout; retrying")
+                conversation.append({
+                    "role": "user",
+                    "content": "[System: model call timed out, please retry]",
+                })
+                continue
 
             response = response or ""
 
@@ -104,6 +120,8 @@ class TurnRunner:
 
                 if tool.requires_approval:
                     self._history.add(f"Approval required: {tool_name}", str(params))
+                    self._pending_tool = {"name": tool_name, "params": params}
+                    self._pending_conversation = conversation
                     return TurnResult(
                         stop_reason=STOP_APPROVAL,
                         mode="approval_required",
@@ -114,7 +132,12 @@ class TurnRunner:
 
                 result = registry.execute(tool_name, params)
                 detail = (result.output or result.error or "")[:200]
-                self._history.add(f"Used {tool_name}", detail)
+
+                if not result.success:
+                    self._history.add(f"Tool failed: {tool_name}", result.error or detail)
+                else:
+                    self._history.add(f"Used {tool_name}", detail)
+
                 conversation.append({
                     "role": "user",
                     "content": f"Tool result ({tool_name}):\n{result.output or result.error}",
@@ -127,9 +150,66 @@ class TurnRunner:
             context_summary=self._summarize(conversation),
         )
 
+    def resume(
+        self,
+        tool_name: str,
+        tool_params: Dict[str, Any],
+        approved: bool,
+    ) -> TurnResult:
+        """
+        Resume the loop after a tool-approval pause.
+
+        If approved=False, log rejection and return stop_reason='done'.
+        If approved=True, execute the tool; on error return stop_reason='error';
+        on success continue the loop from where it paused.
+        """
+        conversation = self._pending_conversation or []
+
+        if not approved:
+            self._history.add(f"Tool rejected: {tool_name}", str(tool_params))
+            self._pending_tool = None
+            self._pending_conversation = None
+            return TurnResult(
+                stop_reason=STOP_DONE,
+                mode="rejected",
+                transcript=self._history.to_list(),
+                context_summary="",
+            )
+
+        registry = get_registry()
+        result = registry.execute(tool_name, tool_params)
+
+        if not result.success:
+            error_msg = result.error or "Tool execution failed"
+            self._history.add(f"Tool failed: {tool_name}", error_msg)
+            self._pending_tool = None
+            self._pending_conversation = None
+            return TurnResult(
+                stop_reason=STOP_ERROR,
+                mode="error",
+                transcript=self._history.to_list(),
+                context_summary="",
+                error=error_msg,
+            )
+
+        detail = (result.output or "")[:200]
+        self._history.add(f"Used {tool_name}", detail)
+        conversation.append({
+            "role": "user",
+            "content": f"Tool result ({tool_name}):\n{result.output}",
+        })
+
+        self._pending_tool = None
+        self._pending_conversation = None
+        return self._run_loop(conversation)
+
     def _call_model_with_timeout(self, conversation: List[Dict]) -> tuple:
         result_holder: List[Optional[str]] = [None]
         error_holder: List[Optional[str]] = [None]
+        # Use a distinct marker so we can distinguish "timed out" from
+        # "model returned None/empty string".
+        _not_set = object()
+        result_holder = [_not_set]
 
         def call() -> None:
             try:
@@ -143,10 +223,17 @@ class TurnRunner:
         thread.join(timeout=timeout_s)
 
         if thread.is_alive():
-            self._history.add("Turn timeout", "Model call exceeded timeout")
-            return "", None
+            # Return the sentinel (None) to signal a timeout to the caller.
+            return _TIMEOUT_SENTINEL, None
 
-        return result_holder[0], error_holder[0]
+        if error_holder[0] is not None:
+            return None, error_holder[0]
+
+        value = result_holder[0]
+        if value is _not_set:
+            # Thread finished but set neither result nor error — treat as empty.
+            return "", None
+        return value, None
 
     def _build_messages(
         self,
