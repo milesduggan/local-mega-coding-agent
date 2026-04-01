@@ -9,22 +9,22 @@ Thank you for your interest in contributing! This document provides guidelines f
 - Python 3.10+
 - Node.js 18+
 - VS Code
-- ~16GB RAM (for running models)
-- ~8GB disk space (for models)
+- 16GB RAM minimum, 32GB recommended (for running models)
+- ~9GB disk space (for model)
 
 ### Steps
 
 1. **Fork and clone the repository**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/local-ai-agent.git
-   cd local-ai-agent
+   git clone https://github.com/milesduggan/local-mega-coding-agent.git
+   cd local-mega-coding-agent
    ```
 
 2. **Download models**
    ```bash
    python setup_models.py
    ```
-   This downloads LLaMA 3.1 8B and DeepSeek Coder 6.7B (~8GB total).
+   Downloads Qwen3-14B-Instruct (~9GB). Pass `--model 30b` to download the larger 30B variant instead.
 
 3. **Install Python dependencies**
    ```bash
@@ -40,26 +40,31 @@ Thank you for your interest in contributing! This document provides guidelines f
    ```
 
 5. **Launch development environment**
-   - Open the `local-ai-agent` folder in VS Code
+   - Open the `local-mega-coding-agent` folder in VS Code
    - Press `F5` to launch the Extension Development Host
    - The extension runs in a new VS Code window
 
 ## Project Structure
 
 ```
-local-ai-agent/
+local-mega-coding-agent/
 ├── scripts/                    # Python backend
 │   ├── backend/
 │   │   ├── wrapper.py          # JSON-RPC router (entry point)
 │   │   └── model_manager.py    # Model lifecycle management
+│   ├── agent/                  # Agentic loop components
+│   │   ├── turn_runner.py      # Agentic loop execution
+│   │   ├── router.py           # Tool call dispatch
+│   │   ├── context.py          # SessionContext (per-session state)
+│   │   └── history.py          # HistoryLog (turn history)
 │   ├── chunker/                # AST-based Python chunking
 │   │   ├── python_chunker.py   # Parse Python into chunks
 │   │   ├── selector.py         # Select relevant chunks
 │   │   └── reconstructor.py    # Rebuild file from chunks
 │   ├── critic/
-│   │   └── critic.py           # LLaMA interface (chat, review)
+│   │   └── critic.py           # Chat and diff review (PASS/FAIL)
 │   ├── executor/
-│   │   └── executor.py         # DeepSeek interface (code gen)
+│   │   └── executor.py         # Code generation and diff synthesis
 │   ├── memory/
 │   │   └── context_manager.py  # Session persistence
 │   └── config.py               # Central configuration
@@ -269,8 +274,7 @@ Please include:
 ### Modifying Model Behavior
 
 1. Changes to model parameters should use `config.py`
-2. Test with both models before submitting
-3. Document any behavior changes
+2. Document any behavior changes
 
 ## Questions?
 
