@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 
 
 class ModelType(Enum):
-    """Single model type — Qwen2.5-Coder handles all roles."""
+    """Single model type — Qwen3 handles all roles."""
     MAIN = "main"
 
 

@@ -10,7 +10,7 @@ class SessionContext:
     tool_count: int
     matched_tools: List[str]
     workspace_root: str
-    model_info: str = "Qwen2.5-Coder-7B-Instruct"
+    model_info: str = "Qwen3-14B-Instruct"
 
 
 def build_session_context(snapshot_text: str, routing_result: List[ToolMatch]) -> SessionContext:

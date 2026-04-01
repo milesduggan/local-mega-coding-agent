@@ -9,7 +9,7 @@
 ## Features
 
 - **100% Offline** - No API keys, no cloud services, your code never leaves your machine
-- **Single-Model Architecture** - Qwen2.5-Coder 7B-Instruct for all roles (chat, code, review)
+- **Single-Model Architecture** - Qwen3-14B-Instruct for all roles (chat, code, review)
 - **Critic-Executor-Review Workflow** - Safer code changes with built-in validation
 - **Smart Chunking** - 50-75% token savings on Python files via AST-based chunking
 - **Tool System** - Extensible tools for bash commands, file operations, and codebase search
@@ -82,7 +82,7 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Qwen2.5-Coder 7B-Instruct runs all three roles with different temperature settings:
+Qwen3-14B-Instruct runs all three roles with different temperature settings:
 - **Chat/clarify** — temperature 0.7 for natural conversation
 - **Code generation** — temperature 0.2 for deterministic output
 - **Review** — temperature 0.3 for conservative correctness judgments
@@ -209,4 +209,4 @@ MIT - see [LICENSE](LICENSE)
 
 - [llama.cpp](https://github.com/ggerganov/llama.cpp) - Fast inference engine
 - [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) - Python bindings
-- [Qwen](https://qwen.readthedocs.io/) - Qwen2.5-Coder code-specialized model
+- [Qwen](https://qwenlm.github.io/) - Qwen3 language models
