@@ -27,6 +27,23 @@ jobs:
           python -m py_compile scripts/chunker/selector.py
           python -m py_compile scripts/chunker/reconstructor.py
           python -m py_compile scripts/memory/context_manager.py
+          python -m py_compile scripts/agent/turn_runner.py
+          python -m py_compile scripts/agent/router.py
+          python -m py_compile scripts/agent/context.py
+          python -m py_compile scripts/agent/history.py
+          python -m py_compile scripts/agent/main.py
+
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run Python tests
+        run: python -m pytest tests/ --ignore=tests/test_critic_chat.py -q
 
   typescript-build:
     runs-on: ubuntu-latest

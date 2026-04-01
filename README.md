@@ -32,7 +32,7 @@
 1. **Clone the repository**
    ```bash
    git clone https://github.com/milesduggan/local-mega-coding-agent.git
-   cd local-ai-agent
+   cd local-mega-coding-agent
    ```
 
 2. **Download models**
@@ -59,7 +59,7 @@
    ```
 
 5. **Launch the extension**
-   - Open the `local-ai-agent` folder in VS Code
+   - Open the `local-mega-coding-agent` folder in VS Code
    - Press `F5` to launch the Extension Development Host
    - The AI Agent icon appears in the sidebar
 
@@ -135,7 +135,7 @@ export AI_AGENT_MODEL_CODE_MAX_TOKENS=2048
 ## Project Structure
 
 ```
-local-ai-agent/
+local-mega-coding-agent/
 ├── models/                     # GGUF model files (gitignored)
 │   └── qwen/
 ├── scripts/

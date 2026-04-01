@@ -345,7 +345,7 @@ fs.writeFileSync()
 ## File Structure
 
 ```
-local-ai-agent/
+local-mega-coding-agent/
 ├── models/
 │   └── qwen3/
 │       └── Qwen3-14B-Instruct-Q4_K_M.gguf
