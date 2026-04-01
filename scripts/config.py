@@ -30,14 +30,20 @@ def _get_float(name: str, default: float) -> float:
 
 
 # =============================================================================
-# Model Settings (Qwen2.5-Coder 7B-Instruct)
+# Model Settings (Qwen3-14B-Instruct)
 # =============================================================================
+#
+# To swap to Qwen3-Coder-30B-A3B (recommended if you have 32GB+ RAM free):
+#   export AI_AGENT_MODEL_PATH=/path/to/models/qwen3/qwen3-coder-30b-a3b-instruct-q4_k_m.gguf
+#   export AI_AGENT_MODEL_N_CTX=16384
+#
+# Run setup_models.py --model 30b to download the 30B model (~19GB).
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 MODEL_PATH = os.environ.get(
     "AI_AGENT_MODEL_PATH",
-    os.path.join(_PROJECT_ROOT, "models", "qwen", "qwen2.5-coder-7b-instruct-q4_k_m.gguf")
+    os.path.join(_PROJECT_ROOT, "models", "qwen3", "qwen3-14b-instruct-q4_k_m.gguf")
 )
 
 # Context window — larger allows more file content but uses more RAM

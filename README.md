@@ -24,14 +24,14 @@
 
 - Python 3.10+
 - VS Code 1.85+
-- 8GB RAM minimum (16GB recommended)
-- ~5GB disk space for model
+- 16GB RAM minimum (32GB recommended)
+- ~10GB disk space for model
 
 ### Installation
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/milesduggan/local-ai-agent.git
+   git clone https://github.com/milesduggan/local-mega-coding-agent.git
    cd local-ai-agent
    ```
 
@@ -39,7 +39,12 @@
    ```bash
    python setup_models.py
    ```
-   This downloads Qwen2.5-Coder-7B-Instruct-Q4_K_M (~4.5GB).
+   This downloads Qwen3-14B-Instruct Q4_K_M (~9GB).
+
+   For the larger Qwen3-Coder 30B model (better for agentic tasks, needs ~20GB free RAM):
+   ```bash
+   python setup_models.py --model 30b
+   ```
 
 3. **Install Python dependencies**
    ```bash

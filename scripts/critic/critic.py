@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 from typing import List, Dict, Optional
 from llama_cpp import Llama
@@ -82,6 +83,9 @@ def _extract_response_text(response: dict) -> str:
         raise CriticError("LLM returned null content")
 
     text = str(content).strip()
+    # Strip Qwen3 thinking blocks — <think>...</think> may appear even when
+    # thinking mode is nominally disabled due to a known llama.cpp chat template issue.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     return text.encode("utf-8", errors="replace").decode("utf-8")
 
 

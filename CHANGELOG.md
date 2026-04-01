@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.0] - 2026-03-31
+
+### Changed
+- Upgraded from Qwen2.5-Coder 7B to Qwen3-14B-Instruct (~9GB, better reasoning)
+- `setup_models.py` now supports `--model 30b` flag to download Qwen3-Coder-30B-A3B (~19GB)
+- Added `<think>` token stripping in `_extract_response_text` for Qwen3 compatibility
+- To swap to 30B: set `AI_AGENT_MODEL_PATH` env var and run `python setup_models.py --model 30b`
+
 ## [0.2.0] - 2026-03-31
 
 ### Added
