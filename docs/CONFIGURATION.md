@@ -6,36 +6,31 @@ All settings can be configured via environment variables (Python backend) or VS 
 
 Set these before starting VS Code or in your shell profile.
 
-### DeepSeek (Executor) Model
+### Model
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AI_AGENT_DEEPSEEK_N_CTX` | 8192 | Context window size (tokens) |
-| `AI_AGENT_DEEPSEEK_MAX_TOKENS` | 1024 | Maximum output tokens |
-| `AI_AGENT_DEEPSEEK_TEMPERATURE` | 0.2 | Creativity (0.0-1.0, lower = more deterministic) |
-| `AI_AGENT_DEEPSEEK_TOP_P` | 0.9 | Nucleus sampling threshold |
-| `AI_AGENT_DEEPSEEK_REPEAT_PENALTY` | 1.1 | Penalty for repeating tokens |
-| `AI_AGENT_DEEPSEEK_N_THREADS` | 4 | CPU threads for inference |
+| `AI_AGENT_MODEL_PATH` | `models/qwen3/qwen3-14b-instruct-q4_k_m.gguf` | Path to the model file |
+| `AI_AGENT_MODEL_N_CTX` | 8192 | Context window size (tokens) |
+| `AI_AGENT_MODEL_N_THREADS` | 4 | CPU threads for inference |
+| `AI_AGENT_MODEL_CHAT_MAX_TOKENS` | 512 | Max tokens for chat responses |
+| `AI_AGENT_MODEL_CHAT_TEMPERATURE` | 0.7 | Chat creativity (higher = more creative) |
+| `AI_AGENT_MODEL_CODE_MAX_TOKENS` | 1024 | Max tokens for code generation |
+| `AI_AGENT_MODEL_CODE_TEMPERATURE` | 0.2 | Code generation creativity (lower = more deterministic) |
+| `AI_AGENT_MODEL_CODE_TOP_P` | 0.9 | Nucleus sampling threshold for code generation |
+| `AI_AGENT_MODEL_CODE_REPEAT_PENALTY` | 1.1 | Penalty for repeating tokens in code generation |
+| `AI_AGENT_MODEL_REVIEW_MAX_TOKENS` | 256 | Max tokens for diff review responses |
+| `AI_AGENT_MODEL_REVIEW_TEMPERATURE` | 0.3 | Review creativity (lower = more conservative) |
+| `AI_AGENT_MODEL_NORMALIZE_MAX_TOKENS` | 300 | Max tokens for task normalization |
+| `AI_AGENT_MODEL_NORMALIZE_TEMPERATURE` | 0.2 | Normalization creativity (low for consistent format) |
+| `AI_AGENT_MODEL_TURN_MAX_TOKENS` | 512 | Max tokens for agentic turn decisions |
+| `AI_AGENT_MODEL_TURN_TEMPERATURE` | 0.4 | Turn decision creativity |
 
-### LLaMA (Critic) Model
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AI_AGENT_LLAMA_N_CTX` | 4096 | Context window size (tokens) |
-| `AI_AGENT_LLAMA_CHAT_MAX_TOKENS` | 512 | Max tokens for chat responses |
-| `AI_AGENT_LLAMA_REVIEW_MAX_TOKENS` | 256 | Max tokens for diff review |
-| `AI_AGENT_LLAMA_NORMALIZE_MAX_TOKENS` | 300 | Max tokens for task normalization |
-| `AI_AGENT_LLAMA_CHAT_TEMPERATURE` | 0.7 | Chat creativity (higher = more creative) |
-| `AI_AGENT_LLAMA_REVIEW_TEMPERATURE` | 0.3 | Review creativity (lower = more conservative) |
-| `AI_AGENT_LLAMA_NORMALIZE_TEMPERATURE` | 0.2 | Normalization creativity |
-| `AI_AGENT_LLAMA_N_THREADS` | 4 | CPU threads for inference |
-
-### Model Paths
+### Agentic Loop
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AI_AGENT_LLAMA_MODEL_PATH` | `models/llama/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf` | Path to LLaMA model file |
-| `AI_AGENT_DEEPSEEK_MODEL_PATH` | `models/deepseek/deepseek-coder-6.7b-instruct.Q4_K_M.gguf` | Path to DeepSeek model file |
+| `AI_AGENT_MAX_TURNS` | 10 | Maximum agentic loop turns before returning `max_turns_reached` |
 
 ### Model Lifecycle
 
@@ -123,8 +118,8 @@ export AI_AGENT_TIMEOUT_WARMUP_MS=180000
 ### More Creative Code Generation
 
 ```bash
-export AI_AGENT_DEEPSEEK_TEMPERATURE=0.4
-export AI_AGENT_DEEPSEEK_MAX_TOKENS=2048
+export AI_AGENT_MODEL_CODE_TEMPERATURE=0.4
+export AI_AGENT_MODEL_CODE_MAX_TOKENS=2048
 ```
 
 ### Keep Models in RAM (Disable Auto-Unload)
@@ -173,9 +168,15 @@ Check the Output panel in VS Code (select "AI Agent" from dropdown).
 ### Custom Model Location
 
 ```bash
-# Use models stored elsewhere
-export AI_AGENT_LLAMA_MODEL_PATH="/path/to/your/llama-model.gguf"
-export AI_AGENT_DEEPSEEK_MODEL_PATH="/path/to/your/deepseek-model.gguf"
+# Use a model stored elsewhere on disk
+export AI_AGENT_MODEL_PATH="/path/to/your/model.gguf"
+```
+
+To swap to Qwen3-Coder-30B-A3B (recommended if you have 32 GB+ RAM free):
+
+```bash
+export AI_AGENT_MODEL_PATH="/path/to/models/qwen3/qwen3-coder-30b-a3b-instruct-q4_k_m.gguf"
+export AI_AGENT_MODEL_N_CTX=16384
 ```
 
 ---
@@ -183,12 +184,13 @@ export AI_AGENT_DEEPSEEK_MODEL_PATH="/path/to/your/deepseek-model.gguf"
 ## Model Parameters Explained
 
 ### Context Window (`n_ctx`)
+
 The maximum number of tokens the model can process at once. Larger values allow more context but use more memory.
 
-- **DeepSeek default (8192)**: Handles files up to ~6000 lines
-- **LLaMA default (4096)**: Sufficient for chat and review tasks
+- **Default (8192)**: Handles files up to ~6000 lines
 
 ### Temperature
+
 Controls randomness in output. Range: 0.0 to 1.0
 
 - **0.0**: Completely deterministic (same input = same output)
@@ -197,6 +199,7 @@ Controls randomness in output. Range: 0.0 to 1.0
 - **1.0**: Maximum creativity (often incoherent)
 
 ### Top-P (Nucleus Sampling)
+
 Only consider tokens whose cumulative probability exceeds this threshold.
 
 - **0.9 (default)**: Consider top 90% probability mass
@@ -204,6 +207,7 @@ Only consider tokens whose cumulative probability exceeds this threshold.
 - **Higher values**: More diverse outputs
 
 ### Repeat Penalty
+
 Penalizes the model for repeating tokens. Helps prevent infinite loops in code.
 
 - **1.0**: No penalty
@@ -226,8 +230,9 @@ Run this Python snippet to see active configuration:
 
 ```python
 from scripts.config import *
-print(f"DeepSeek n_ctx: {DEEPSEEK_N_CTX}")
-print(f"LLaMA n_ctx: {LLAMA_N_CTX}")
+print(f"Model path: {MODEL_PATH}")
+print(f"Context window: {MODEL_N_CTX}")
+print(f"Max agent turns: {MAX_AGENT_TURNS}")
 print(f"Auto-unload: {AUTO_UNLOAD_ENABLED}")
 print(f"Idle timeout: {MODEL_IDLE_TIMEOUT_MINUTES} min")
 ```
