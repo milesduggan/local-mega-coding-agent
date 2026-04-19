@@ -12,9 +12,6 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // Warm up models in background (don't await - let it run async)
-  provider.warmUpModels();
-
   // Register file commands
   context.subscriptions.push(
     vscode.commands.registerCommand("ai-agent.addFile", (uri?: vscode.Uri) => {
@@ -76,18 +73,16 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("ai-agent.unloadModels", async () => {
       const choice = await vscode.window.showQuickPick(
-        ["All Models", "Critic (LLaMA)", "Executor (DeepSeek)"],
-        { placeHolder: "Select models to unload" }
+        ["Main Model"],
+        { placeHolder: "Select model to unload" }
       );
 
       if (!choice) {
         return;
       }
 
-      const modelMap: Record<string, "all" | "critic" | "executor"> = {
-        "All Models": "all",
-        "Critic (LLaMA)": "critic",
-        "Executor (DeepSeek)": "executor"
+      const modelMap: Record<string, "main"> = {
+        "Main Model": "main"
       };
 
       try {
@@ -125,14 +120,11 @@ export function activate(context: vscode.ExtensionContext) {
           return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
         };
 
-        const criticStatus = status.critic?.loaded ? "Loaded" : "Unloaded";
-        const executorStatus = status.executor?.loaded ? "Loaded" : "Unloaded";
-        const criticIdle = status.critic?.loaded ? ` (idle: ${formatIdle(status.critic.idle_seconds)})` : "";
-        const executorIdle = status.executor?.loaded ? ` (idle: ${formatIdle(status.executor.idle_seconds)})` : "";
+        const mainStatus = status.main?.loaded ? "Loaded" : "Unloaded";
+        const mainIdle = status.main?.loaded ? ` (idle: ${formatIdle(status.main.idle_seconds)})` : "";
 
         const message = [
-          `Critic (LLaMA): ${criticStatus}${criticIdle}`,
-          `Executor (DeepSeek): ${executorStatus}${executorIdle}`,
+          `Main model: ${mainStatus}${mainIdle}`,
           `Auto-unload: ${status.config?.auto_unload_enabled ? "Enabled" : "Disabled"}`,
           `Idle timeout: ${status.config?.idle_timeout_minutes ?? 15} minutes`
         ].join("\n");

@@ -2,7 +2,7 @@
 JSON-RPC wrapper for VSCode extension communication.
 
 This module provides a stdin/stdout interface for the VSCode extension
-to communicate with the critic and executor components.
+to communicate with the local AI agent backend.
 
 Protocol: JSON-RPC 2.0 over stdin/stdout (one JSON object per line)
 """
@@ -30,12 +30,10 @@ sys.path.insert(0, _PROJECT_ROOT)
 
 from scripts.critic.critic import chat, review_diff, normalize_task, History
 from scripts.critic.critic import chat_for_turn
-from scripts.critic.critic import warm_up as warm_up_critic
-from scripts.critic.critic import unload as unload_critic
+from scripts.critic.critic import warm_up as warm_up_main
+from scripts.critic.critic import unload as unload_main
 from scripts.agent.turn_runner import TurnRunner
 from scripts.executor.executor import execute
-from scripts.executor.executor import warm_up as warm_up_executor
-from scripts.executor.executor import unload as unload_executor
 from scripts.backend.model_manager import get_manager
 from scripts.tools.registry import get_registry
 
@@ -125,22 +123,17 @@ def handle_normalize_task(params: dict) -> str:
 
 def handle_warm_up(params: dict) -> dict:
     """
-    Pre-load models into memory to eliminate first-request latency.
-    Can specify which models to load: 'critic', 'executor', or 'all' (default).
+    Pre-load the main model into memory to eliminate first-request latency.
+
+    Accepts legacy aliases for compatibility.
     """
     models = params.get("models", "all")
 
     results = {}
-
-    if models in ("all", "critic"):
-        log.info("Warming up critic model (LLaMA)...")
-        results["critic"] = warm_up_critic()
-        log.info(f"Critic warm-up: {'success' if results['critic'] else 'failed'}")
-
-    if models in ("all", "executor"):
-        log.info("Warming up executor model (DeepSeek)...")
-        results["executor"] = warm_up_executor()
-        log.info(f"Executor warm-up: {'success' if results['executor'] else 'failed'}")
+    if models in ("all", "main", "critic", "executor"):
+        log.info("Warming up main model...")
+        results["main"] = warm_up_main()
+        log.info(f"Main model warm-up: {'success' if results['main'] else 'failed'}")
 
     return results
 
@@ -174,36 +167,31 @@ def handle_validate(params: dict) -> dict:
 
 def handle_unload(params: dict) -> dict:
     """
-    Unload models to free memory.
+    Unload the main model to free memory.
 
     Params:
-        models: "all" | "critic" | "executor" (default: "all")
+        models: "all" | "main" (default: "all")
 
     Returns:
-        {"critic": bool, "executor": bool} - True if model was unloaded
+        {"main": bool} - True if model was unloaded
     """
     models = params.get("models", "all")
     results = {}
 
-    if models in ("all", "critic"):
-        results["critic"] = unload_critic()
-        log.info(f"Critic unload: {'success' if results['critic'] else 'not loaded'}")
-
-    if models in ("all", "executor"):
-        results["executor"] = unload_executor()
-        log.info(f"Executor unload: {'success' if results['executor'] else 'not loaded'}")
+    if models in ("all", "main", "critic", "executor"):
+        results["main"] = unload_main()
+        log.info(f"Main model unload: {'success' if results['main'] else 'not loaded'}")
 
     return results
 
 
 def handle_model_status(params: dict) -> dict:
     """
-    Get status of loaded models.
+    Get status of the loaded model.
 
     Returns:
         {
-            "critic": {"loaded": bool, "idle_seconds": int|null, ...},
-            "executor": {"loaded": bool, "idle_seconds": int|null, ...},
+            "main": {"loaded": bool, "idle_seconds": int|null, ...},
             "config": {"idle_timeout_minutes": int, "auto_unload_enabled": bool}
         }
     """

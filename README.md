@@ -9,12 +9,12 @@
 ## Features
 
 - **100% Offline** - No API keys, no cloud services, your code never leaves your machine
-- **Single-Model Architecture** - Qwen3-14B-Instruct for all roles (chat, code, review)
-- **Critic-Executor-Review Workflow** - Safer code changes with built-in validation
-- **Smart Chunking** - 50-75% token savings on Python files via AST-based chunking
-- **Tool System** - Extensible tools for bash commands, file operations, and codebase search
-- **Agentic Loop** - Multi-turn tool use: agent reads files, searches code, then generates a diff
-- **Auto Memory Management** - Automatically unloads idle models to free ~4-5GB RAM
+- **Single-Model Architecture** - Qwen3-14B-Instruct handles chat, code generation, review, and agent-turn decisions
+- **Review Gate Before Apply** - Generated changes are reviewed before you accept them
+- **Agentic Loop** - The agent can inspect files, search the codebase, and gather context with tools before generating a diff
+- **Smart Chunking** - AST-based Python chunking reduces token usage on larger files
+- **Tool System** - Extensible tools for shell commands, file operations, and codebase search
+- **Auto Memory Management** - Automatically unloads the main model when idle to free RAM
 - **Security Hardened** - Path traversal protection and input validation
 - **Configurable** - Tune timeouts, model parameters, and behavior via settings
 
@@ -66,26 +66,23 @@
 ### Usage
 
 1. Click the **AI Agent** icon in the VS Code sidebar
-2. **Add files** via right-click context menu or the "+" button
-3. **Describe your task** in the chat (e.g., "Add logging to the execute function")
-4. Click **"Proceed"** to generate changes
-5. **Review the diff** and click "Apply" or "Reject"
+2. Add files via right-click context menu or the "+" button
+3. Describe your task in the chat
+4. Click **Proceed** to let the agent gather context and generate changes
+5. Review the diff and click **Apply** or **Reject**
 
 ## How It Works
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  1. CHAT        →  Qwen clarifies your intent               │
-│  2. EXECUTE     →  Qwen generates code changes              │
-│  3. REVIEW      →  Qwen validates the diff                  │
-│  4. APPLY       →  Changes written after syntax validation  │
-└─────────────────────────────────────────────────────────────┘
-```
+1. **Chat** - The agent clarifies intent if needed.
+2. **Agent Loop** - Tools inspect files, search the codebase, and gather context.
+3. **Execute** - The model generates code changes.
+4. **Review** - Generated changes are checked before apply.
+5. **Apply** - Changes are written after validation.
 
-Qwen3-14B-Instruct runs all three roles with different temperature settings:
-- **Chat/clarify** — temperature 0.7 for natural conversation
-- **Code generation** — temperature 0.2 for deterministic output
-- **Review** — temperature 0.3 for conservative correctness judgments
+Qwen3-14B-Instruct handles all stages with different temperature settings:
+- **Chat/clarify** - temperature 0.7 for natural conversation
+- **Code generation** - temperature 0.2 for deterministic output
+- **Review** - temperature 0.3 for conservative correctness judgments
 
 ## Requirements
 
@@ -129,50 +126,50 @@ export AI_AGENT_MODEL_CODE_MAX_TOKENS=2048
 | `AI Agent: Add File` | Add file to context |
 | `AI Agent: Remove File` | Remove file from context |
 | `AI Agent: Clear All Files` | Clear all files from context |
-| `AI Agent: Unload Models` | Free RAM by unloading models |
-| `AI Agent: Show Model Status` | View loaded models and idle time |
+| `AI Agent: Unload Models` | Free RAM by unloading the main model |
+| `AI Agent: Show Model Status` | View main model status and idle time |
 
 ## Project Structure
 
-```
+```text
 local-mega-coding-agent/
-├── models/                     # GGUF model files (gitignored)
-│   └── qwen/
-├── scripts/
-│   ├── backend/
-│   │   ├── wrapper.py          # JSON-RPC router
-│   │   └── model_manager.py    # Model lifecycle management
-│   ├── chunker/                # AST-based Python chunking
-│   ├── agent/                  # Agentic loop
-│   │   ├── turn_runner.py      # Multi-turn loop with tool dispatch
-│   │   ├── router.py           # Scores tools against user input
-│   │   ├── context.py          # Session context for system prompt
-│   │   └── history.py          # Per-turn transcript log
-│   ├── critic/                 # Chat and review interface (Qwen)
-│   ├── executor/               # Code generation interface (Qwen)
-│   ├── memory/                 # Session persistence
-│   ├── tools/                  # Extensible tool system
-│   │   ├── bash.py             # Shell command execution
-│   │   ├── file_ops.py         # File operations
-│   │   └── search.py           # Glob, grep, find_definition
-│   └── config.py               # Central configuration
-├── vscode-ai-agent/
-│   ├── src/
-│   │   ├── extension.ts        # Entry point
-│   │   ├── SidebarProvider.ts  # UI and flow logic
-│   │   └── pythonBackend.ts    # IPC client
-│   └── package.json
-├── docs/
-│   ├── ARCHITECTURE.md         # Technical architecture
-│   ├── CONFIGURATION.md        # Configuration reference
-│   └── TOOLS.md                # Tool system reference
-├── tests/
-│   ├── test_executor.py        # Executor security tests
-│   ├── test_tools.py           # Tool system tests
-│   ├── test_turn_runner.py     # Agentic loop tests
-│   └── test_tool_registry_parity.py  # Tool registry audit (123 tests total)
-├── setup_models.py             # Model download script
-└── README.md
+|-- models/                     # GGUF model files (gitignored)
+|   `-- qwen/
+|-- scripts/
+|   |-- backend/
+|   |   |-- wrapper.py          # JSON-RPC router
+|   |   `-- model_manager.py    # Model lifecycle management
+|   |-- chunker/                # AST-based Python chunking
+|   |-- agent/                  # Agentic loop
+|   |   |-- turn_runner.py      # Multi-turn loop with tool dispatch
+|   |   |-- router.py           # Scores tools against user input
+|   |   |-- context.py          # Session context for system prompt
+|   |   `-- history.py          # Per-turn transcript log
+|   |-- critic/                 # Internal chat and review codepaths
+|   |-- executor/               # Internal code generation codepaths
+|   |-- memory/                 # Local context and memory utilities
+|   |-- tools/                  # Extensible tool system
+|   |   |-- bash.py             # Shell command execution
+|   |   |-- file_ops.py         # File operations
+|   |   `-- search.py           # Glob, grep, find_definition
+|   `-- config.py               # Central configuration
+|-- vscode-ai-agent/
+|   |-- src/
+|   |   |-- extension.ts        # Entry point
+|   |   |-- SidebarProvider.ts  # UI and flow logic
+|   |   `-- pythonBackend.ts    # IPC client
+|   `-- package.json
+|-- docs/
+|   |-- ARCHITECTURE.md         # Technical architecture
+|   |-- CONFIGURATION.md        # Configuration reference
+|   `-- TOOLS.md                # Tool system reference
+|-- tests/
+|   |-- test_executor.py        # Executor security tests
+|   |-- test_tools.py           # Tool system tests
+|   |-- test_turn_runner.py     # Agentic loop tests
+|   `-- test_tool_registry_parity.py  # Tool registry audit
+|-- setup_models.py             # Model download script
+`-- README.md
 ```
 
 ## Contributing
@@ -182,21 +179,26 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 ## Troubleshooting
 
 ### Models fail to load
+
 - Ensure models exist in `models/` directory
 - Run `python setup_models.py` to download
 - Check you have ~5GB free disk space
 
 ### Slow first response
-- Models warm up on extension activation (10-20s)
-- Check Output panel for "Warming up AI models..."
-- If warm-up fails, models load on first use
+
+- The extension now uses strict lazy startup
+- Opening the repo, activating the extension, or opening the sidebar does not load the main model
+- The Python backend and main model start on first intentional agent use
+- The first real agent action may take a cold-start hit while the model loads
 
 ### Out of memory
-- Use `AI Agent: Unload Models` command to free RAM
+
+- Use `AI Agent: Unload Models` command to unload the main model and free RAM
 - Enable auto-unload in settings (default: 15 min idle)
 - Consider using a machine with 32GB RAM
 
 ### Code generation returns garbage
+
 - Ensure the model is the correct version
 - Check Python backend logs in Output panel
 - Try simplifying your task description

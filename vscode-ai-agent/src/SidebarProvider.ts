@@ -30,7 +30,7 @@ function validatePathInWorkspace(filePath: string, workspaceRoot: string): strin
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "ai-agent.sidebarView";
 
-  private backend: PythonBackend;
+  private backend?: PythonBackend;
   private webviewView?: vscode.WebviewView;
   private selectedFiles: Map<string, string> = new Map(); // path -> content
   private conversationHistory: ChatMessage[] = [];
@@ -39,9 +39,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private currentTask: string = "";
   private reviewVerdict: string = "";
 
-  constructor(private readonly context: vscode.ExtensionContext) {
-    const python = vscode.workspace.getConfiguration("ai-agent").get("pythonPath") as string;
-    this.backend = new PythonBackend(python, context.extensionPath);
+  constructor(private readonly context: vscode.ExtensionContext) {}
+
+  private getBackend(): PythonBackend {
+    if (!this.backend) {
+      const python = vscode.workspace.getConfiguration("ai-agent").get("pythonPath") as string;
+      this.backend = new PythonBackend(python, this.context.extensionPath);
+    }
+    return this.backend;
   }
 
   /**
@@ -50,15 +55,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    */
   async warmUpModels(): Promise<void> {
     try {
-      console.log("Warming up AI models...");
-      const results = await this.backend.warmUp("all");
+      console.log("Warming up AI model...");
+      const results = await this.getBackend().warmUp("all");
       console.log("Model warm-up complete:", results);
 
-      if (!results.critic || !results.executor) {
-        const failed = [];
-        if (!results.critic) failed.push("critic (LLaMA)");
-        if (!results.executor) failed.push("executor (DeepSeek)");
-        vscode.window.showWarningMessage(`Some models failed to load: ${failed.join(", ")}`);
+      if (!results.main) {
+        vscode.window.showWarningMessage("The main AI model failed to load.");
       }
     } catch (e: unknown) {
       console.error("Model warm-up failed:", e);
@@ -67,22 +69,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Unload models to free memory.
-   * @param models Which models to unload: 'critic', 'executor', or 'all'
+   * Unload the main model to free memory.
+   * @param models Which models to unload: 'main' or 'all'
    */
-  async unloadModels(models: "all" | "critic" | "executor" = "all"): Promise<{ critic?: boolean; executor?: boolean }> {
-    return this.backend.unloadModels(models);
+  async unloadModels(models: "all" | "main" = "all"): Promise<{ main?: boolean }> {
+    return this.getBackend().unloadModels(models);
   }
 
   /**
    * Get current model status including load state and idle time.
    */
   async getModelStatus(): Promise<{
-    critic: { loaded: boolean; idle_seconds: number | null; model_path: string };
-    executor: { loaded: boolean; idle_seconds: number | null; model_path: string };
+    main: { loaded: boolean; idle_seconds: number | null; model_path: string };
     config: { idle_timeout_minutes: number; auto_unload_enabled: boolean };
   }> {
-    return this.backend.getModelStatus();
+    return this.getBackend().getModelStatus();
   }
 
   addFile(uri: vscode.Uri) {
@@ -159,7 +160,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case "approveToolCall": {
           const { toolName, toolParams, approved } = msg;
           try {
-            const result = await this.backend.agentTurn({
+            const result = await this.getBackend().agentTurn({
               user_input: "",
               files: {},
               resume: true,
@@ -187,7 +188,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.updateWebview();
 
     try {
-      const response = await this.backend.chat(text, this.conversationHistory);
+      const response = await this.getBackend().chat(text, this.conversationHistory);
       this.conversationHistory.push({ role: "assistant", content: response });
       this.updateWebview();
     } catch (e: unknown) {
@@ -214,7 +215,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     try {
       // Step 1: Normalize task
       const fileList = Array.from(this.selectedFiles.keys());
-      this.currentTask = await this.backend.normalizeTask(this.conversationHistory, fileList);
+      this.currentTask = await this.getBackend().normalizeTask(this.conversationHistory, fileList);
 
       // Check if clarification needed
       if (this.currentTask.startsWith("CLARIFY:")) {
@@ -229,10 +230,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
       // Step 2: Execute
       const filesObj = Object.fromEntries(this.selectedFiles);
-      this.currentDiff = await this.backend.execute(this.currentTask, filesObj);
+      this.currentDiff = await this.getBackend().execute(this.currentTask, filesObj);
 
       // Step 3: Review
-      this.reviewVerdict = await this.backend.reviewDiff(this.currentTask, this.currentDiff);
+      this.reviewVerdict = await this.getBackend().reviewDiff(this.currentTask, this.currentDiff);
 
       this.currentState = "reviewing";
       this.updateWebview();
@@ -311,7 +312,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private async handleAgentProceed(userInput: string, files: Record<string, string>): Promise<void> {
     try {
-      const result = await this.backend.agentTurn({ user_input: userInput, files });
+      const result = await this.getBackend().agentTurn({ user_input: userInput, files });
       this.webviewView?.webview.postMessage({ type: "agentTurnResult", result });
     } catch (err) {
       this.webviewView?.webview.postMessage({
@@ -353,7 +354,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     try {
-      const validation = await this.backend.validateFiles(filesToValidate);
+      const validation = await this.getBackend().validateFiles(filesToValidate);
       if (!validation.valid) {
         const errorMsg = Object.entries(validation.errors)
           .map(([f, e]) => `${f}: ${e}`)
@@ -485,7 +486,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     const historyHtml = this.conversationHistory.map(msg => `
       <div class="message ${msg.role}">
-        <b>${msg.role === "user" ? "You" : "Critic"}:</b>
+        <b>${msg.role === "user" ? "You" : "Agent"}:</b>
         <span>${this.escapeHtml(msg.content)}</span>
       </div>
     `).join("");

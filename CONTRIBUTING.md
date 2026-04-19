@@ -1,6 +1,6 @@
 # Contributing to Local AI Agent
 
-Thank you for your interest in contributing! This document provides guidelines for development setup and contribution workflow.
+Thank you for your interest in contributing. This document provides guidelines for development setup and contribution workflow.
 
 ## Development Setup
 
@@ -46,37 +46,37 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ## Project Structure
 
-```
+```text
 local-mega-coding-agent/
-├── scripts/                    # Python backend
-│   ├── backend/
-│   │   ├── wrapper.py          # JSON-RPC router (entry point)
-│   │   └── model_manager.py    # Model lifecycle management
-│   ├── agent/                  # Agentic loop components
-│   │   ├── turn_runner.py      # Agentic loop execution
-│   │   ├── router.py           # Tool call dispatch
-│   │   ├── context.py          # SessionContext (per-session state)
-│   │   └── history.py          # HistoryLog (turn history)
-│   ├── chunker/                # AST-based Python chunking
-│   │   ├── python_chunker.py   # Parse Python into chunks
-│   │   ├── selector.py         # Select relevant chunks
-│   │   └── reconstructor.py    # Rebuild file from chunks
-│   ├── critic/
-│   │   └── critic.py           # Chat and diff review (PASS/FAIL)
-│   ├── executor/
-│   │   └── executor.py         # Code generation and diff synthesis
-│   ├── memory/
-│   │   └── context_manager.py  # Session persistence
-│   └── config.py               # Central configuration
-├── vscode-ai-agent/            # TypeScript extension
-│   ├── src/
-│   │   ├── extension.ts        # Extension entry point
-│   │   ├── SidebarProvider.ts  # UI and workflow logic
-│   │   └── pythonBackend.ts    # IPC client for Python
-│   └── package.json            # Extension manifest
-├── models/                     # GGUF model files (gitignored)
-├── tests/                      # Test files
-└── docs/                       # Documentation
+|-- scripts/                    # Python backend
+|   |-- backend/
+|   |   |-- wrapper.py          # JSON-RPC router (entry point)
+|   |   `-- model_manager.py    # Model lifecycle management
+|   |-- agent/                  # Agentic loop components
+|   |   |-- turn_runner.py      # Agentic loop execution
+|   |   |-- router.py           # Tool call dispatch
+|   |   |-- context.py          # SessionContext (per-session state)
+|   |   `-- history.py          # HistoryLog (turn history)
+|   |-- chunker/                # AST-based Python chunking
+|   |   |-- python_chunker.py   # Parse Python into chunks
+|   |   |-- selector.py         # Select relevant chunks
+|   |   `-- reconstructor.py    # Rebuild file from chunks
+|   |-- critic/
+|   |   `-- critic.py           # Internal chat and review codepaths
+|   |-- executor/
+|   |   `-- executor.py         # Internal code generation codepaths
+|   |-- memory/
+|   |   `-- context_manager.py  # Local context and memory utilities
+|   `-- config.py               # Central configuration
+|-- vscode-ai-agent/            # TypeScript extension
+|   |-- src/
+|   |   |-- extension.ts        # Extension entry point
+|   |   |-- SidebarProvider.ts  # UI and workflow logic
+|   |   `-- pythonBackend.ts    # IPC client for Python
+|   `-- package.json            # Extension manifest
+|-- models/                     # GGUF model files (gitignored)
+|-- tests/                      # Test files
+`-- docs/                       # Documentation
 ```
 
 ## Code Style
@@ -142,7 +142,7 @@ npm test
 
 1. Press `F5` in VS Code to launch Extension Development Host
 2. Open a Python project in the new window
-3. Test the full workflow: add files → chat → proceed → review → apply
+3. Test the full workflow: add files -> chat -> proceed -> review -> apply
 
 ## Pull Request Process
 
@@ -178,7 +178,7 @@ npm test
 
 Use [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 <type>: <description>
 
 [optional body]
@@ -200,7 +200,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ### Examples
 
-```
+```text
 feat: add retry logic to model loading
 
 fix: handle empty file selection gracefully

@@ -159,11 +159,11 @@ export class PythonBackend {
   }
 
   /**
-   * Pre-load models into memory to eliminate first-request latency.
-   * @param models Which models to warm up: 'critic', 'executor', or 'all'
-   * @returns Object with success status for each model
+   * Pre-load the main model into memory to eliminate first-request latency.
+   * @param models Which models to warm up: 'main' or 'all'
+   * @returns Object with success status for the main model
    */
-  async warmUp(models: "all" | "critic" | "executor" = "all"): Promise<{ critic?: boolean; executor?: boolean }> {
+  async warmUp(models: "all" | "main" = "all"): Promise<{ main?: boolean }> {
     return this.call("warm_up", { models }, this.getTimeout("warmup"));
   }
 
@@ -178,21 +178,20 @@ export class PythonBackend {
   }
 
   /**
-   * Unload models to free memory.
-   * @param models Which models to unload: 'critic', 'executor', or 'all'
-   * @returns Object indicating which models were unloaded
+   * Unload the main model to free memory.
+   * @param models Which models to unload: 'main' or 'all'
+   * @returns Object indicating whether the main model was unloaded
    */
-  async unloadModels(models: "all" | "critic" | "executor" = "all"): Promise<{ critic?: boolean; executor?: boolean }> {
+  async unloadModels(models: "all" | "main" = "all"): Promise<{ main?: boolean }> {
     return this.call("unload", { models }, 10000);  // 10s timeout
   }
 
   /**
    * Get current model status including load state and idle time.
-   * @returns Status object for all models plus configuration
+   * @returns Status object for the main model plus configuration
    */
   async getModelStatus(): Promise<{
-    critic: { loaded: boolean; idle_seconds: number | null; model_path: string };
-    executor: { loaded: boolean; idle_seconds: number | null; model_path: string };
+    main: { loaded: boolean; idle_seconds: number | null; model_path: string };
     config: { idle_timeout_minutes: number; auto_unload_enabled: boolean };
   }> {
     return this.call("model_status", {}, 5000);  // 5s timeout

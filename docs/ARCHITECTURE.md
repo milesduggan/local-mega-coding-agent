@@ -2,141 +2,151 @@
 
 ## Overview
 
-A VSCode extension that provides a local AI coding assistant using a single locally-running LLM:
-- **Qwen3-14B-Instruct** (Q4_K_M) - Chat, code generation, and code review
+Local AI Agent is a VS Code extension backed by a Python JSON-RPC service and a single locally-running LLM:
+- **Qwen3-14B-Instruct** (Q4_K_M) handles chat, code generation, review, normalization, and agent-turn decisions
 
 All inference runs locally. No data leaves your machine.
 
+## Architecture Framing
+
+### Current Integrated Runtime
+
+The current shipped runtime is:
+
+1. A VS Code extension that manages the UI, command surface, diff application, and Python backend lifecycle
+2. A Python backend that exposes JSON-RPC methods over stdin/stdout
+3. A single main model managed through `ModelManager`
+4. An agentic turn loop that can use tools before generating changes
+5. A review-and-apply flow before writing code to disk
+
+This is the current integrated path a user is actually running today.
+
+Startup boundary:
+
+- extension activation registers commands, views, and providers
+- activation does not spawn the Python backend
+- activation does not warm the main model
+- backend startup and model loading happen on first intentional agent use or explicit model-management command
+
+### Internal Module Structure
+
+Some folders in the repo reflect implementation organization rather than separate live runtime boundaries:
+
+- `scripts/critic/` contains internal chat and review codepaths
+- `scripts/executor/` contains internal code generation codepaths
+- `scripts/memory/` contains local context and memory utilities
+
+These modules are useful implementation boundaries, but they should not be read as separate models or as separate product surfaces.
+
+### Planned or Partial Context and Persistence Work
+
+The codebase includes context and memory support code, and the docs/specs describe richer persistence and codebase-awareness patterns. Those ideas are directionally important, but they are **not yet fully integrated** into the current `agent_turn` orchestration path.
+
+In particular:
+
+- the current runtime uses `SessionContext` and `HistoryLog` inside the turn loop
+- richer session persistence and codebase-awareness work remains planned or partial
+- `scripts/memory/context_manager.py` should be read as supporting infrastructure, not as proof that full session persistence is already live in the shipped agent loop
+
 ## Component Flow
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  VSCode Extension (TypeScript)                                       │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐      │
-│  │ SidebarProvider │  │  extension.ts   │  │ pythonBackend.ts│      │
-│  │   (UI + Flow)   │  │   (Commands)    │  │  (IPC Client)   │      │
-│  └────────┬────────┘  └─────────────────┘  └────────┬────────┘      │
-│           │                                          │               │
-│           └──────────────────────────────────────────┘               │
-│                              │                                       │
-│                    JSON-RPC 2.0 over stdin/stdout                    │
-└──────────────────────────────┼───────────────────────────────────────┘
-                               │
-┌──────────────────────────────┼───────────────────────────────────────┐
-│  Python Backend              │                                       │
-│  ┌───────────────────────────┴───────────────────────────────────┐  │
-│  │                       wrapper.py                               │  │
-│  │                   (JSON-RPC Router)                            │  │
-│  └───────────┬───────────────────────────────────────────────────┘  │
-│              │                                                       │
-│  ┌───────────┴───────────────────────────────────────────────────┐  │
-│  │                   scripts/agent/                               │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐   │  │
-│  │  │ TurnRunner  │  │   Router    │  │   SessionContext /    │   │  │
-│  │  │ (agentic    │  │ (tool call  │  │   HistoryLog         │   │  │
-│  │  │  loop)      │  │  dispatch)  │  │   (session state)    │   │  │
-│  │  └──────┬──────┘  └──────┬──────┘  └──────────────────────┘   │  │
-│  │         │                │                                      │  │
-│  │         └────────────────┘                                      │  │
-│  │                  │                                               │  │
-│  │         ┌────────┴────────┐                                      │  │
-│  │         │  Qwen3-14B      │                                      │  │
-│  │         │  (Chat / Code   │                                      │  │
-│  │         │   Gen / Review) │                                      │  │
-│  │         └─────────────────┘                                      │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                      │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                  scripts/critic/ + executor/                   │  │
-│  │  - critic.py    → Chat and diff review (PASS/FAIL)            │  │
-│  │  - executor.py  → Code generation, diff synthesis             │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                      │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                    chunker/ (Token Optimizer)                  │  │
-│  │  - python_chunker.py  → Parse Python into chunks (AST)        │  │
-│  │  - selector.py        → Select relevant chunks for task       │  │
-│  │  - reconstructor.py   → Rebuild file from modified chunks     │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-```
+The current runtime flow is:
+
+1. **VS Code extension**
+   - `SidebarProvider.ts` handles chat UI, diff UI, apply/reject flow, and command-triggered actions
+   - `pythonBackend.ts` is the TypeScript JSON-RPC client
+   - `extension.ts` wires commands and extension activation
+2. **Python backend**
+   - `wrapper.py` exposes JSON-RPC methods such as `chat`, `normalize_task`, `execute`, `review`, and `agent_turn`
+3. **Agent orchestration**
+   - `TurnRunner` manages multi-turn tool use
+   - `Router` scores tools against the user task
+   - `SessionContext` and `HistoryLog` provide turn-level context and transcript state
+4. **Model-backed execution**
+   - the single main model is used across chat, normalization, turn decisions, generation, and review
+5. **Review and apply**
+   - generated diffs are reviewed
+   - files are validated before write
+   - changes are applied only after explicit user approval
 
 ## User Flow
 
-```
-1. SELECT FILES     →  User adds files via context menu or command palette
-2. CHAT             →  User describes task, Qwen3 clarifies intent
-3. PROCEED          →  normalize_task() creates clean spec
-4. AGENTIC LOOP     →  TurnRunner dispatches tool calls (read, write, bash, etc.)
-                        each turn produces a diff; Router routes tool requests
-5. REVIEW           →  Qwen3 reviews diff for correctness (PASS/FAIL)
-6. APPLY/REJECT     →  User decides, changes applied to files
-```
+1. **Select files** - The user adds files through the sidebar or command palette
+2. **Chat** - The user describes the task and can clarify intent
+3. **Proceed** - The extension gathers selected files and enters the execution flow
+4. **Agent loop** - `agent_turn` can inspect files, search the workspace, and gather context through tools
+5. **Execute** - The code generation stage produces file updates and synthesizes a diff locally
+6. **Review** - The diff is checked before apply
+7. **Apply / Reject** - The user decides whether to write the changes
 
 ## Key Design Decisions
 
 ### Why Single Model?
 
-Using one model for all tasks (chat, code generation, review) offers significant advantages:
+Using one model for all tasks offers significant advantages:
 
 | Benefit | Detail |
 |---------|--------|
-| Simpler architecture | No coordination between two separate models |
-| Lower RAM usage | One 14B model loaded instead of two smaller models |
-| Consistent reasoning | Same model that understands the task also writes and reviews the code |
-| Easier configuration | Single MODEL_* parameter block |
+| Simpler architecture | No coordination between multiple model runtimes |
+| Lower RAM usage | One model is loaded and managed |
+| Consistent reasoning | The same model that understands the task also writes and reviews the code |
+| Easier configuration | A single `MODEL_*` configuration surface |
 
-Qwen3-14B-Instruct handles conversation, code generation, and diff review with high quality across all three tasks.
+Qwen3-14B-Instruct currently handles conversation, code generation, review, normalization, and turn decisions.
+
+### Agentic Loop
+
+The agentic loop is a first-class runtime component.
+
+Core pieces:
+
+- `turn_runner.py` owns the multi-turn loop
+- `router.py` ranks relevant tools from the task description
+- `context.py` builds `SessionContext` for the prompt
+- `history.py` records transcript events for the UI
+
+The loop can:
+
+- call read-only tools without pausing
+- stop for approval when a write or shell tool requires it
+- return explicit stop reasons such as `done`, `max_turns_reached`, `approval_required`, or `error`
 
 ### Chunk-Based Execution (Token Optimization)
 
-For Python files, the executor uses AST-based chunking to reduce token usage:
+For Python files, code generation uses AST-based chunking to reduce token usage.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Full File (300 lines)                                          │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌──────────┐  │
-│  │ imports │ │ func_a  │ │ func_b  │ │ Class_C │ │ func_d   │  │
-│  │ 20 lines│ │ 50 lines│ │ 80 lines│ │ 100 line│ │ 50 lines │  │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └──────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-        Task: "Add logging to func_b"
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  Selected Chunks (100 lines = 67% savings)                      │
-│  ┌─────────┐ ┌─────────┐                                        │
-│  │ imports │ │ func_b  │  → Sent to Qwen3                       │
-│  │ 20 lines│ │ 80 lines│                                        │
-│  └─────────┘ └─────────┘                                        │
-└─────────────────────────────────────────────────────────────────┘
-```
+How it works:
 
-**How it works:**
-1. `python_chunker.py` parses file using Python's `ast` module
-2. `selector.py` matches task keywords to chunk names
-3. Only relevant chunks sent to Qwen3 (CHUNK: format)
-4. `reconstructor.py` splices modified chunks back into full file
+1. `python_chunker.py` parses the file with Python's `ast` module
+2. `selector.py` chooses relevant chunks for the task
+3. only relevant chunks are sent to the model
+4. `reconstructor.py` rebuilds the full file from the modified chunks
 
-**Fallback:** Non-Python files use full-file mode.
+Fallback:
+
+- non-Python files use full-file mode
 
 ### Diff Generation is Local
 
-The model outputs **full file contents** (or chunks), not diffs. The executor:
-1. Parses `FILE:` or `CHUNK:` blocks from output
-2. Reconstructs full file if using chunks
-3. Uses Python's `difflib` to generate unified diffs
-4. Returns diff to frontend for review
+The model outputs full file contents or chunk contents, not diffs.
 
-This is deterministic and avoids the model hallucinating diff syntax.
+The generation path:
+
+1. parses `FILE:` or `CHUNK:` blocks from model output
+2. reconstructs the full file if chunking was used
+3. synthesizes unified diffs locally with Python's `difflib`
+4. returns the diff to the frontend for review
+
+This keeps diff generation deterministic and avoids relying on the model to emit valid diff syntax.
 
 ### Model Lifecycle Management
 
 The model is managed by a centralized `ModelManager` singleton that handles:
-- Lazy loading on first access
-- Access timestamp tracking
-- Automatic unloading after idle timeout
-- Manual unload via commands
+
+- lazy loading on first access
+- access timestamp tracking
+- automatic unloading after idle timeout
+- manual unload through the extension command surface
 
 ```python
 from scripts.backend.model_manager import get_manager, ModelType
@@ -154,35 +164,28 @@ status = manager.get_status()  # {main: {loaded, idle_seconds}}
 manager.unload_model(ModelType.MAIN)
 ```
 
-**Key features:**
-- **Thread-safe singleton**: Safe for concurrent access
-- **Lazy loading**: Model only loads when first accessed
-- **Access tracking**: Timestamps updated on each `get_model()` call
-- **Auto-unload**: Background thread unloads model idle > 15 minutes (configurable)
-- **Memory cleanup**: Uses `gc.collect()` twice after deletion
+Key features:
 
-**Warm-up**: On extension activation, `warm_up()` pre-loads the model to eliminate first-request latency (10-20s).
+- **Thread-safe singleton** - safe for concurrent access
+- **Lazy loading** - model loads only when first accessed
+- **Access tracking** - timestamps update on each `get_model()` call
+- **Auto-unload** - background thread unloads the model after idle timeout
+- **Memory cleanup** - uses `gc.collect()` after deletion
 
-**Unloading**: Use `AI Agent: Unload Models` command or wait for auto-unload to free ~8-10GB RAM.
+Warm-up:
+
+- the runtime supports explicit `warm_up()` calls, but the extension no longer performs eager warm-up on activation
+- in the current shipped behavior, the backend and main model are started lazily on first real use
+
+Unload:
+
+- use the unload command to unload the main model and free RAM
 
 ### Tool System
 
-The agent includes a pluggable tool system for executing actions like running commands, reading/writing files, and searching the codebase.
+The agent includes a pluggable tool system for actions like running commands, reading and writing files, and searching the codebase.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Tool Registry (Singleton)                                       │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐               │
-│  │  BashTool   │ │ ReadFile    │ │  GlobTool   │  ...          │
-│  └─────────────┘ └─────────────┘ └─────────────┘               │
-│                                                                  │
-│  registry.execute("bash", {"command": "npm test"})              │
-│         ↓                                                        │
-│  ToolResult(success=True, output="...", metadata={...})         │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Available Tools:**
+Available tools:
 
 | Tool | Description | Read-Only | Approval Required |
 |------|-------------|-----------|-------------------|
@@ -197,28 +200,29 @@ The agent includes a pluggable tool system for executing actions like running co
 | `grep` | Search file contents | Yes | No |
 | `find_definition` | Find function/class definitions | Yes | No |
 
-**Tool Security:**
+Security properties:
 
-- All file operations validate paths stay within workspace
-- Dangerous bash commands are blocked (rm -rf /, fork bombs, curl|sh, etc.)
-- Destructive commands are flagged for caution
-- Tools can only operate within the workspace directory
+- file operations validate paths stay within workspace
+- dangerous shell commands are blocked
+- destructive actions require approval
+- tools are scoped to the workspace directory
 
 See [TOOLS.md](TOOLS.md) for detailed tool documentation and usage examples.
 
 ## Model Parameters
 
-All parameters are configurable via environment variables. See [CONFIGURATION.md](CONFIGURATION.md) for full reference.
+All parameters are configurable via environment variables. See [CONFIGURATION.md](CONFIGURATION.md) for the full reference.
 
 ### Qwen3-14B-Instruct (Single Model)
+
 ```python
-MODEL_PATH     = "models/qwen3/Qwen3-14B-Instruct-Q4_K_M.gguf"
-MODEL_N_CTX    = 8192       # Context window (chat + file contents)
-MODEL_N_THREADS = 4         # CPU threads
-MODEL_MAX_TOKENS = 1024     # Response length
-MODEL_TEMPERATURE = 0.2     # Low for deterministic code generation
-MODEL_TOP_P    = 0.9
-MODEL_REPEAT_PENALTY = 1.1  # Prevents repetition
+MODEL_PATH = "models/qwen3/Qwen3-14B-Instruct-Q4_K_M.gguf"
+MODEL_N_CTX = 8192
+MODEL_N_THREADS = 4
+MODEL_CODE_MAX_TOKENS = 1024
+MODEL_CODE_TEMPERATURE = 0.2
+MODEL_CODE_TOP_P = 0.9
+MODEL_CODE_REPEAT_PENALTY = 1.1
 ```
 
 ### Configuration
@@ -227,7 +231,7 @@ Parameters are centralized in `scripts/config.py` and can be overridden via envi
 
 ```bash
 # Increase output tokens
-export AI_AGENT_MODEL_MAX_TOKENS=2048
+export AI_AGENT_MODEL_CODE_MAX_TOKENS=2048
 
 # Disable auto-unload
 export AI_AGENT_AUTO_UNLOAD_ENABLED=false
@@ -242,20 +246,21 @@ Communication between TypeScript and Python uses JSON-RPC 2.0 over stdin/stdout.
 | Method | Description | Timeout |
 |--------|-------------|---------|
 | `ping` | Health check | - |
-| `warm_up` | Pre-load model | 120s |
-| `chat` | Conversation with agent | 60s |
-| `normalize_task` | Convert conversation to spec | 60s |
+| `warm_up` | Pre-load the main model | 120s |
+| `chat` | Conversation with the agent | 60s |
+| `normalize_task` | Convert conversation to a task spec | 60s |
 | `execute` | Generate code changes | 180s |
-| `agent_turn` | Run one agentic loop turn (tools → diff) | 180s |
+| `agent_turn` | Run one agentic turn with tools and transcript state | 180s |
 | `review` | Review diff for correctness | 60s |
 | `validate` | Validate Python syntax before writing | 10s |
-| `unload` | Unload model to free RAM | 10s |
-| `model_status` | Get model load state and idle time | 5s |
+| `unload` | Unload the main model to free RAM | 10s |
+| `model_status` | Get main model load state and idle time | 5s |
 | `set_workspace` | Set workspace root for tools | 5s |
 | `list_tools` | List available tools with schemas | 5s |
 | `execute_tool` | Execute a tool by name | varies |
 
 ### Example Request
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -269,6 +274,7 @@ Communication between TypeScript and Python uses JSON-RPC 2.0 over stdin/stdout.
 ```
 
 ### Example Response
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -280,17 +286,17 @@ Communication between TypeScript and Python uses JSON-RPC 2.0 over stdin/stdout.
 
 ## Error Handling
 
-1. **LLM Response Validation**: All model responses are validated before accessing nested fields
-2. **Syntax Validation**: Python files validated with `ast.parse()` before writing to disk
-3. **Exception Wrapping**: `handle_message()` catches all exceptions and returns JSON-RPC errors
-4. **Logging**: All operations logged to stderr for debugging
-5. **Graceful Degradation**: Warm-up failures don't block usage (model loads on first use)
+1. **LLM response validation** - all model responses are validated before accessing nested fields
+2. **Syntax validation** - Python files are validated with `ast.parse()` before writing to disk
+3. **Exception wrapping** - `handle_message()` catches exceptions and returns JSON-RPC errors
+4. **Logging** - operations are logged to stderr for debugging
+5. **Graceful degradation** - warm-up failure does not block usage
 
-### Security Hardening
+## Security Hardening
 
-The codebase includes defense-in-depth security measures:
+The codebase includes defense-in-depth protections.
 
-**Path Traversal Protection (TypeScript)**
+### Path Traversal Protection (TypeScript)
 
 All file operations in `SidebarProvider.ts` validate paths stay within the workspace:
 
@@ -305,11 +311,15 @@ function validatePathInWorkspace(filePath: string, workspaceRoot: string): strin
 }
 ```
 
-Applied to: `addFile()`, `applyDiff()`, `handleApply()`
+Applied to:
 
-**Input Validation (Python)**
+- `addFile()`
+- `applyDiff()`
+- `handleApply()`
 
-The executor enforces limits to prevent resource exhaustion:
+### Input Validation (Python)
+
+The code generation path enforces limits to prevent resource exhaustion:
 
 | Limit | Value | Purpose |
 |-------|-------|---------|
@@ -317,97 +327,92 @@ The executor enforces limits to prevent resource exhaustion:
 | `MAX_FILES` | 100 | Limit batch size |
 | `MAX_TOTAL_FILE_SIZE` | 50MB | Prevent memory exhaustion |
 
-**LLM Output Validation**
+### LLM Output Validation
 
-`_parse_file_blocks()` validates model output to prevent the model from referencing files outside the allowed set:
-- Rejects absolute paths (`/etc/passwd`)
-- Rejects path traversal (`../../../etc/passwd`)
-- Only allows files from the original input set
+`_parse_file_blocks()` validates model output so the model cannot reference files outside the allowed set:
+
+- rejects absolute paths such as `/etc/passwd`
+- rejects path traversal such as `../../../etc/passwd`
+- only allows files from the original input set
 
 ### Defense-in-Depth Validation
 
 Generated code is validated at multiple points:
 
-```
-Qwen3 Output
-    ↓
-[Chunk-based?] → reconstruct_file() → ast.parse() ✓
-    ↓
-[Full-file?] → _parse_file_blocks() → ast.parse() ✓
-    ↓
-User clicks "Apply"
-    ↓
-validateFiles() RPC → ast.parse() ✓  (TypeScript-side)
-    ↓
-fs.writeFileSync()
-```
+1. generation output is parsed and reconstructed
+2. Python syntax is validated before returning changes
+3. frontend validation runs before apply
+4. files are only written after validation passes
 
 ## File Structure
 
-```
+```text
 local-mega-coding-agent/
-├── models/
-│   └── qwen3/
-│       └── Qwen3-14B-Instruct-Q4_K_M.gguf
-├── scripts/
-│   ├── backend/
-│   │   ├── wrapper.py          # JSON-RPC router
-│   │   └── model_manager.py    # Model lifecycle management
-│   ├── agent/
-│   │   ├── turn_runner.py      # Agentic loop execution
-│   │   ├── router.py           # Tool call dispatch
-│   │   ├── context.py          # SessionContext (per-session state)
-│   │   └── history.py          # HistoryLog (turn history)
-│   ├── chunker/
-│   │   ├── __init__.py         # Package exports
-│   │   ├── python_chunker.py   # AST-based Python parsing
-│   │   ├── selector.py         # Chunk relevance selection
-│   │   └── reconstructor.py    # File reconstruction
-│   ├── critic/
-│   │   └── critic.py           # Chat and diff review interface
-│   ├── executor/
-│   │   └── executor.py         # Code generation and diff synthesis
-│   ├── memory/
-│   │   └── context_manager.py  # Session persistence
-│   ├── tools/
-│   │   ├── __init__.py         # Package exports
-│   │   ├── base.py             # Tool, ToolResult, ToolParameter
-│   │   ├── registry.py         # ToolRegistry singleton
-│   │   ├── bash.py             # Shell command execution
-│   │   ├── file_ops.py         # File operations (read, write, edit, etc.)
-│   │   └── search.py           # Glob, grep, find_definition
-│   └── config.py               # Central configuration
-├── vscode-ai-agent/
-│   ├── src/
-│   │   ├── extension.ts        # Entry point
-│   │   ├── SidebarProvider.ts  # UI + flow logic
-│   │   └── pythonBackend.ts    # IPC client
-│   └── package.json
-├── docs/
-│   ├── ARCHITECTURE.md         # This file
-│   ├── CONFIGURATION.md        # Configuration reference
-│   └── TOOLS.md                # Tool system documentation
-├── tests/
-│   ├── test_executor.py        # Unit tests for executor security
-│   └── test_tools.py           # Unit tests for tool system (52 tests)
-├── setup_models.py             # Model download script
-├── README.md                   # Project overview
-├── CONTRIBUTING.md             # Contribution guidelines
-└── LICENSE                     # MIT license
+|-- models/
+|   `-- qwen3/
+|       `-- Qwen3-14B-Instruct-Q4_K_M.gguf
+|-- scripts/
+|   |-- backend/
+|   |   |-- wrapper.py          # JSON-RPC router
+|   |   `-- model_manager.py    # Model lifecycle management
+|   |-- agent/
+|   |   |-- turn_runner.py      # Agentic loop execution
+|   |   |-- router.py           # Tool relevance scoring
+|   |   |-- context.py          # SessionContext
+|   |   `-- history.py          # HistoryLog
+|   |-- chunker/
+|   |   |-- __init__.py
+|   |   |-- python_chunker.py   # AST-based Python parsing
+|   |   |-- selector.py         # Chunk relevance selection
+|   |   `-- reconstructor.py    # File reconstruction
+|   |-- critic/
+|   |   `-- critic.py           # Internal chat and review codepaths
+|   |-- executor/
+|   |   `-- executor.py         # Internal code generation codepaths
+|   |-- memory/
+|   |   `-- context_manager.py  # Local context and memory utilities
+|   |-- tools/
+|   |   |-- __init__.py
+|   |   |-- base.py             # Tool, ToolResult, ToolParameter
+|   |   |-- registry.py         # ToolRegistry singleton
+|   |   |-- bash.py             # Shell command execution
+|   |   |-- file_ops.py         # File operations
+|   |   `-- search.py           # Glob, grep, find_definition
+|   `-- config.py               # Central configuration
+|-- vscode-ai-agent/
+|   |-- src/
+|   |   |-- extension.ts        # Entry point
+|   |   |-- SidebarProvider.ts  # UI and flow logic
+|   |   `-- pythonBackend.ts    # IPC client
+|   `-- package.json
+|-- docs/
+|   |-- ARCHITECTURE.md         # This file
+|   |-- CONFIGURATION.md        # Configuration reference
+|   `-- TOOLS.md                # Tool system documentation
+|-- tests/
+|   |-- test_executor.py        # Executor security tests
+|   `-- test_tools.py           # Tool system tests
+|-- setup_models.py             # Model download script
+|-- README.md                   # Project overview
+|-- CONTRIBUTING.md             # Contribution guidelines
+`-- LICENSE                     # MIT license
 ```
 
 ## Troubleshooting
 
 ### Model Loading Fails
-- Check model file exists in `models/qwen3/` directory
-- Run `python setup_models.py` to download
-- Check disk space (~9GB needed for the model)
+
+- Check that the model file exists in `models/qwen3/`
+- Run `python setup_models.py` to download it
+- Check disk space (~9GB needed for the default model)
 
 ### Slow First Response
-- Model should warm up on activation
-- Check Output panel for "Warming up AI models..."
-- If warm-up fails, model loads on first use (10-20s delay)
+
+- The main model may warm up on activation
+- Check Output panel for warm-up messages
+- If warm-up fails, the model loads on first use
 
 ### Diff Application Fails
-- Ensure file hasn't changed since selection
-- Check diff parsing handles both `--- path` and `--- a/path` formats
+
+- Ensure the file has not changed since selection
+- Check that diff parsing handles the returned patch format

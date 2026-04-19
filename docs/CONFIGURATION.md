@@ -75,7 +75,7 @@ Configure in VS Code settings (UI or `settings.json`).
 | `ai-agent.timeouts.normalize` | 60000 | Task normalization timeout (ms) |
 | `ai-agent.timeouts.execute` | 180000 | Code generation timeout (ms) |
 | `ai-agent.timeouts.review` | 60000 | Diff review timeout (ms) |
-| `ai-agent.timeouts.warmup` | 120000 | Model warm-up timeout (ms) |
+| `ai-agent.timeouts.warmup` | 120000 | Timeout for explicit model warm-up operations (ms) |
 
 ### Model Management
 
@@ -240,6 +240,10 @@ print(f"Idle timeout: {MODEL_IDLE_TIMEOUT_MINUTES} min")
 ### Model Status Command
 
 Use `AI Agent: Show Model Status` command to see:
-- Which models are loaded
-- Idle time for each model
+- Whether the main model is loaded
+- Idle time for the main model
 - Current auto-unload settings
+
+Current startup behavior:
+- Extension activation does not load the backend or the main model
+- The backend and model start on first intentional agent use or explicit model-management action

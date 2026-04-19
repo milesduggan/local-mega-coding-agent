@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Changed
+- VS Code extension startup is now strict-lazy for development use: activation no longer warms the main model and no longer spawns the Python backend by default
+- The Python backend and Qwen model now start only on intentional agent use or explicit model-management actions
+
 ## [0.3.0] - 2026-03-31
 
 ### Changed
